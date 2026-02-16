@@ -1,0 +1,6 @@
+streamlit
+pandas
+pdfplumber
+openpyxl
+streamlit-gsheets-connection
+pillow
