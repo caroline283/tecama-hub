@@ -18,14 +18,13 @@ st.markdown("""
     h1 { color: #FF5722; }
     .stButton>button { background-color: #FF5722; color: white; width: 100%; border-radius: 8px; font-weight: bold; }
     div[data-testid="stMetric"] { background-color: #F8F9FA; border-left: 5px solid #FF5722; padding: 15px; border-radius: 5px; }
-    .stTabs [data-baseweb="tab-list"] { gap: 24px; }
     </style>
     """, unsafe_allow_html=True)
 
 # --- 3. CONEXÃO COM GOOGLE SHEETS ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# --- 4. FUNÇÕES DE AUXÍLIO ---
+# --- 4. FUNÇÕES DE AUXÍLIO MARCENARIA ---
 def norm(t):
     if not t or pd.isna(t): return ""
     t = unicodedata.normalize("NFD", str(t).upper()).encode("ascii", "ignore").decode("utf-8")
@@ -39,99 +38,113 @@ def limpa_material(t):
         t = re.sub(rf'\b{r}\b', '', t)
     return t.strip()
 
+def calcular_pesos_madeira(larg, comp, quant, material_texto):
+    PESO_M2_BASE = {"MDP": 12.0, "MDF": 13.5}
+    try:
+        l, c, q = float(larg), float(comp), float(quant)
+        m_norm = norm(material_texto)
+        tipo = "MDF" if "MDF" in m_norm else "MDP"
+        esp_match = re.search(r"(\d+)\s*MM", m_norm)
+        e = float(esp_match.group(1)) if esp_match else 18.0
+        peso_uni = (l/1000) * (c/1000) * PESO_M2_BASE[tipo] * (e/18)
+        return round(peso_uni, 2), round(peso_uni * q, 2)
+    except: return 0.0, 0.0
+
 # --- 5. MENU LATERAL ---
 with st.sidebar:
     st.markdown("<h1 style='text-align: center;'>🏗️ TECAMA</h1>", unsafe_allow_html=True)
     opcao = st.radio("Selecione a Divisão:", ["🏠 Início", "🪵 Marcenaria (CSV)", "⚙️ Metalurgia (PDF)"])
     st.markdown("---")
-    st.caption("Tecama Hub v5.0")
+    st.caption("Tecama Hub v5.1")
 
 # ==========================================
 # DIVISÃO 1: MARCENARIA (CONVERSOR CSV)
 # ==========================================
 if opcao == "🪵 Marcenaria (CSV)":
     st.header("🪵 Divisão de Marcenaria")
-    st.subheader("Conversor de Produção CSV")
-
-    # Carregar cores do Google Sheets em vez de CSV local
+    
     try:
         df_cores_gs = conn.read(worksheet="CORES_MARCENARIA", ttl=5)
-        m_cores = {norm(r["descricao"]): str(r["codigo"]).strip() 
-                   for _, r in df_cores_gs.iterrows() if "descricao" in df_cores_gs.columns}
+        m_cores = {norm(r["descricao"]): str(r["codigo"]).strip() for _, r in df_cores_gs.iterrows()}
     except:
-        st.warning("⚠️ Não foi possível carregar a aba 'CORES_MARCENARIA' do Google Sheets.")
+        st.error("Erro: Aba 'CORES_MARCENARIA' não encontrada no Sheets.")
         m_cores = {}
 
-    up_csv = st.file_uploader("Suba o ficheiro CSV gerado pelo sistema", type="csv")
-    
+    up_csv = st.file_uploader("Suba o arquivo CSV", type="csv")
     if up_csv:
         df_b = pd.read_csv(up_csv, sep=None, engine='python', dtype=str)
         nome_f = up_csv.name.replace(".csv", "").upper()
         
-        # Identificar título do pedido
         l_teste = pd.to_numeric(df_b.iloc[0].get('LARG', ''), errors='coerce')
         if pd.isna(l_teste):
             info_l = " - ".join([str(v) for v in df_b.iloc[0].dropna() if str(v).strip() != ""])
             tit = f"{nome_f} | {info_l}"
             df = df_b.iloc[1:].copy()
         else:
-            tit = nome_f
-            df = df_b.copy()
+            tit = nome_f; df = df_b.copy()
 
         if st.button("🚀 Gerar Excel de Produção"):
             df.columns = [norm(c) for c in df.columns]
             
-            # Aplicar Mapa de Cores e Limpeza
-            if "COR" in df.columns:
-                df["COR"] = df["COR"].apply(lambda x: m_cores.get(norm(x), x))
-            if "MATERIAL" in df.columns:
-                df["MATERIAL"] = df["MATERIAL"].apply(limpa_material)
-            
-            # Colunas Extras para oficina
+            # Pesos e Limpeza
+            pesos = df.apply(lambda r: calcular_pesos_madeira(r.get("LARG",0), r.get("COMP",0), r.get("QUANT",0), r["MATERIAL"]), axis=1)
+            df["PESO_UNIT"] = pesos.apply(lambda x: x[0])
+            df["PESO_TOTAL"] = pesos.apply(lambda x: x[1])
+            if "COR" in df.columns: df["COR"] = df["COR"].apply(lambda x: m_cores.get(norm(x), x))
+            df["MATERIAL"] = df["MATERIAL"].apply(limpa_material)
             for c in ["CORTE", "FITA", "USINAGEM"]: df[c] = ""
             
-            # Criar Excel
+            if "DES_PAI" in df.columns: df = df.sort_values(by="DES_PAI")
+
             output = io.BytesIO()
             with pd.ExcelWriter(output, engine="openpyxl") as writer:
-                df.to_excel(writer, sheet_name="PRODUCAO", startrow=3, index=False)
-                ws = writer.sheets["PRODUCAO"]
-                ws.cell(row=1, column=1, value=f"TECAMA | PEDIDO: {tit}").font = Font(bold=True, size=14)
+                ws = writer.book.create_sheet("PRODUCAO")
+                ws.cell(row=1, column=1, value=f"TECAMA | PEDIDO: {tit}").font = Font(bold=True, size=14, color="F97316")
+                ws.merge_cells(start_row=1, end_row=1, start_column=1, end_column=12)
                 
-                # Ajuste automático de colunas
-                for col in ws.columns:
-                    ws.column_dimensions[col[0].column_letter].width = 20
-            
-            st.success("✅ Conversão concluída!")
-            st.download_button("📥 Baixar Planilha Marcenaria", output.getvalue(), f"PROD_{nome_f}.xlsx")
+                header = ["QUANT","COMP","LARG","MATERIAL","COR (COD)","DESCPECA","PRODUTO","CORTE","FITA","USINAGEM","PESO UNIT.","PESO TOTAL"]
+                for i, h in enumerate(header, 1):
+                    cell = ws.cell(row=3, column=i, value=h)
+                    cell.font = Font(bold=True); cell.alignment = Alignment(horizontal="center")
+                
+                curr = 4; soma = 0.0
+                col_ordem = ["QUANT","COMP","LARG","MATERIAL","COR","DESCPECA","DES_PAI","CORTE","FITA","USINAGEM","PESO_UNIT","PESO_TOTAL"]
+                
+                for dp, g in df.groupby("DES_PAI", sort=False):
+                    ini = curr
+                    for _, r in g.iterrows():
+                        for i, c_nome in enumerate(col_ordem, 1):
+                            ws.cell(row=curr, column=i, value=r.get(c_nome, ""))
+                        soma += float(r.get("PESO_TOTAL", 0)); curr += 1
+                    if len(g) > 1:
+                        ws.merge_cells(start_row=ini, end_row=curr-1, start_column=7, end_column=7)
+                        ws.cell(row=ini, column=7).alignment = Alignment(vertical="center", horizontal="center")
+                    curr += 1
+                
+                ws.cell(row=curr+1, column=11, value="TOTAL:").font = Font(bold=True)
+                ws.cell(row=curr+1, column=12, value=f"{round(soma, 2)} kg").font = Font(bold=True)
+                
+                # Bordas e AutoFit
+                borda = Border(left=Side(style="thin"), right=Side(style="thin"), top=Side(style="thin"), bottom=Side(style="thin"))
+                for col_idx in range(1, 13):
+                    max_l = 0
+                    for row_idx in range(3, curr):
+                        cell = ws.cell(row=row_idx, column=col_idx)
+                        if cell.value: max_l = max(max_l, len(str(cell.value)))
+                        if cell.row >= 3: cell.border = borda
+                    ws.column_dimensions[get_column_letter(col_idx)].width = max_l + 4
+
+            st.success(f"✅ Sucesso! Peso Total: {round(soma, 2)} kg")
+            st.download_button("📥 Baixar Planilha", output.getvalue(), f"PROD_{nome_f}.xlsx")
 
 # ==========================================
 # DIVISÃO 2: METALURGIA (PDF)
 # ==========================================
 elif opcao == "⚙️ Metalurgia (PDF)":
-    st.header("⚙️ Metalurgia System 3.0")
-    
-    # Abas internas da Metalurgia
-    aba_calc, aba_db = st.tabs(["📋 Calculadora", "🛠️ Configurações (Nuvem)"])
-
-    with aba_calc:
-        uploaded_pdf = st.file_uploader("Suba o Relatório PDF do Pedido Metálico", type="pdf")
-        if uploaded_pdf:
-            # Aqui entra a tua lógica original de extração de tabelas do PDF
-            st.info("Processando extração de dados do PDF...")
-            # (Insere aqui as tuas funções: pdfplumber -> extract_tables)
-
-    with aba_db:
-        st.subheader("Base de Dados (Google Sheets)")
-        if st.button("🔄 Sincronizar Tabelas"):
-            st.rerun()
-        # Mostra as tabelas de Mapeamento, Pesos Tubos, etc.
+    st.header("⚙️ Metalurgia System")
+    # --- COLOQUE SUA LÓGICA DE PDF AQUI ---
+    st.info("Área de cálculo de estruturas metálicas ativa.")
 
 elif opcao == "🏠 Início":
-    st.title("Bem-vindo ao Tecama Hub Industrial")
-    st.markdown("""
-    Este é o centro de operações digital da **Tecama**.
-    
-    - **Marcenaria:** Converte CSVs de projeto em listas de corte limpas com cores codificadas.
-    - **Metalurgia:** Extrai dados de PDFs e calcula pesos de estruturas metálicas.
-    """)
-    st.image("https://via.placeholder.com/800x300?text=TECAMA+INDUSTRIAL+HUB", use_container_width=True)
+    st.title("Bem-vindo ao Hub Industrial Tecama")
+    st.write("Selecione Marcenaria ou Metalurgia no menu lateral.")
