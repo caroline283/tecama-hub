@@ -69,11 +69,17 @@ def calcular_pesos_madeira(larg, comp, quant, material_texto):
 
 # --- 5. MENU LATERAL ---
 with st.sidebar:
-    st.markdown("<h1 style='text-align: center;'>🏗️ TECAMA</h1>", unsafe_allow_html=True)
+    # --- LOGO TECAMA ---
+    # Tenta carregar o logo. Se não existir no GitHub, ignora para não dar erro.
+    if os.path.exists("logo_tecama.png"):
+        st.image("logo_tecama.png", use_container_width=True)
+    else:
+        st.markdown("<h1 style='text-align: center;'>🏗️ TECAMA</h1>", unsafe_allow_html=True)
+    
     opcao = st.radio("Selecione a Divisão:", ["🏠 Início", "🪵 Marcenaria (CSV)", "⚙️ Metalurgia (PDF)"])
     st.markdown("---")
     st.info("**Dica:** Use a Marcenaria para arquivos CSV e a Metalurgia para relatórios em PDF.")
-    st.caption("Tecama Hub v5.5")
+    st.caption("Tecama Hub v5.6")
 
 # ==========================================
 # DIVISÃO 1: MARCENARIA (CONVERSOR CSV)
@@ -81,78 +87,102 @@ with st.sidebar:
 if opcao == "🪵 Marcenaria (CSV)":
     st.header("🪵 Divisão de Marcenaria")
     
-    try:
-        df_cores_gs = conn.read(worksheet="CORES_MARCENARIA", ttl=5)
-        m_cores = {norm(r["descricao"]): str(r["codigo"]).split('.')[0].strip() for _, r in df_cores_gs.iterrows()}
-    except:
-        st.error("Erro: Aba 'CORES_MARCENARIA' não encontrada no Sheets.")
-        m_cores = {}
+    # Abas internas da Marcenaria
+    aba_csv, aba_config_cores = st.tabs(["📋 Conversor CSV", "🛠️ Configurar Cores"])
 
-    up_csv = st.file_uploader("Suba o arquivo CSV da Marcenaria", type="csv")
-    if up_csv:
-        df_b = pd.read_csv(up_csv, sep=None, engine='python', dtype=str)
-        nome_f = up_csv.name.replace(".csv", "").upper()
+    with aba_csv:
+        try:
+            df_cores_gs = conn.read(worksheet="CORES_MARCENARIA", ttl=5)
+            m_cores = {norm(r["descricao"]): str(r["codigo"]).split('.')[0].strip() for _, r in df_cores_gs.iterrows()}
+        except:
+            st.error("Erro: Aba 'CORES_MARCENARIA' não encontrada no Sheets.")
+            m_cores = {}
+
+        up_csv = st.file_uploader("Suba o arquivo CSV da Marcenaria", type="csv")
+        if up_csv:
+            df_b = pd.read_csv(up_csv, sep=None, engine='python', dtype=str)
+            nome_f = up_csv.name.replace(".csv", "").upper()
+            
+            l_teste = pd.to_numeric(df_b.iloc[0].get('LARG', ''), errors='coerce')
+            if pd.isna(l_teste):
+                info_l = " - ".join([str(v) for v in df_b.iloc[0].dropna() if str(v).strip() != ""])
+                tit = f"{nome_f} | {info_l}"
+                df = df_b.iloc[1:].copy()
+            else:
+                tit = nome_f; df = df_b.copy()
+
+            if st.button("🚀 Gerar Excel de Produção"):
+                df.columns = [norm(c) for c in df.columns]
+                pesos = df.apply(lambda r: calcular_pesos_madeira(r.get("LARG",0), r.get("COMP",0), r.get("QUANT",0), r["MATERIAL"]), axis=1)
+                df["PESO_UNIT"] = pesos.apply(lambda x: x[0])
+                df["PESO_TOTAL"] = pesos.apply(lambda x: x[1])
+                
+                if "COR" in df.columns: 
+                    df["COR"] = df["COR"].apply(lambda x: m_cores.get(norm(x), str(x).split('.')[0]))
+                    
+                df["MATERIAL"] = df["MATERIAL"].apply(limpa_material)
+                for c in ["CORTE", "FITA", "USINAGEM"]: df[c] = ""
+                
+                if "DES_PAI" in df.columns: df = df.sort_values(by="DES_PAI")
+
+                output = io.BytesIO()
+                with pd.ExcelWriter(output, engine="openpyxl") as writer:
+                    ws = writer.book.create_sheet("PRODUCAO")
+                    ws.cell(row=1, column=1, value=f"TECAMA | PEDIDO: {tit}").font = Font(bold=True, size=14, color="FF5722")
+                    ws.merge_cells(start_row=1, end_row=1, start_column=1, end_column=12)
+                    
+                    header = ["QUANT","COMP","LARG","MATERIAL","COR (COD)","DESCPECA","PRODUTO","CORTE","FITA","USINAGEM","PESO UNIT.","PESO TOTAL"]
+                    for i, h in enumerate(header, 1):
+                        cell = ws.cell(row=3, column=i, value=h)
+                        cell.font = Font(bold=True); cell.alignment = Alignment(horizontal="center")
+                    
+                    curr = 4; soma = 0.0
+                    col_ordem = ["QUANT","COMP","LARG","MATERIAL","COR","DESCPECA","DES_PAI","CORTE","FITA","USINAGEM","PESO_UNIT","PESO_TOTAL"]
+                    
+                    for dp, g in df.groupby("DES_PAI", sort=False):
+                        ini = curr
+                        for _, r in g.iterrows():
+                            for i, c_nome in enumerate(col_ordem, 1):
+                                ws.cell(row=curr, column=i, value=r.get(c_nome, ""))
+                            soma += float(r.get("PESO_TOTAL", 0)); curr += 1
+                        if len(g) > 1:
+                            ws.merge_cells(start_row=ini, end_row=curr-1, start_column=7, end_column=7)
+                            ws.cell(row=ini, column=7).alignment = Alignment(vertical="center", horizontal="center")
+                        curr += 1
+                    
+                    ws.cell(row=curr+1, column=11, value="TOTAL:").font = Font(bold=True)
+                    ws.cell(row=curr+1, column=12, value=f"{round(soma, 2)} kg").font = Font(bold=True)
+                    
+                    borda = Border(left=Side(style="thin"), right=Side(style="thin"), top=Side(style="thin"), bottom=Side(style="thin"))
+                    for row in ws.iter_rows(min_row=3, max_row=curr-1):
+                        if any(cell.value for cell in row):
+                            for cell in row: cell.border = borda
+
+                    for col_idx in range(1, 13):
+                        ws.column_dimensions[get_column_letter(col_idx)].width = 18
+
+                st.success(f"✅ Excel Marcenaria Pronto! Peso: {round(soma, 2)} kg")
+                st.download_button("📥 Baixar Planilha Marcenaria", output.getvalue(), f"PROD_{nome_f}.xlsx")
+
+    with aba_config_cores:
+        st.subheader("🛠️ Gestão de Cores (Google Sheets)")
+        st.write("Abaixo estão as cores cadastradas na sua planilha base.")
         
-        l_teste = pd.to_numeric(df_b.iloc[0].get('LARG', ''), errors='coerce')
-        if pd.isna(l_teste):
-            info_l = " - ".join([str(v) for v in df_b.iloc[0].dropna() if str(v).strip() != ""])
-            tit = f"{nome_f} | {info_l}"
-            df = df_b.iloc[1:].copy()
-        else:
-            tit = nome_f; df = df_b.copy()
-
-        if st.button("🚀 Gerar Excel de Produção"):
-            df.columns = [norm(c) for c in df.columns]
-            pesos = df.apply(lambda r: calcular_pesos_madeira(r.get("LARG",0), r.get("COMP",0), r.get("QUANT",0), r["MATERIAL"]), axis=1)
-            df["PESO_UNIT"] = pesos.apply(lambda x: x[0])
-            df["PESO_TOTAL"] = pesos.apply(lambda x: x[1])
+        try:
+            # Mostra a tabela atual de cores
+            df_view_cores = conn.read(worksheet="CORES_MARCENARIA", ttl=0)
+            st.dataframe(df_view_cores, use_container_width=True)
             
-            if "COR" in df.columns: 
-                df["COR"] = df["COR"].apply(lambda x: m_cores.get(norm(x), str(x).split('.')[0]))
-                
-            df["MATERIAL"] = df["MATERIAL"].apply(limpa_material)
-            for c in ["CORTE", "FITA", "USINAGEM"]: df[c] = ""
-            
-            if "DES_PAI" in df.columns: df = df.sort_values(by="DES_PAI")
-
-            output = io.BytesIO()
-            with pd.ExcelWriter(output, engine="openpyxl") as writer:
-                ws = writer.book.create_sheet("PRODUCAO")
-                ws.cell(row=1, column=1, value=f"TECAMA | PEDIDO: {tit}").font = Font(bold=True, size=14, color="FF5722")
-                ws.merge_cells(start_row=1, end_row=1, start_column=1, end_column=12)
-                
-                header = ["QUANT","COMP","LARG","MATERIAL","COR (COD)","DESCPECA","PRODUTO","CORTE","FITA","USINAGEM","PESO UNIT.","PESO TOTAL"]
-                for i, h in enumerate(header, 1):
-                    cell = ws.cell(row=3, column=i, value=h)
-                    cell.font = Font(bold=True); cell.alignment = Alignment(horizontal="center")
-                
-                curr = 4; soma = 0.0
-                col_ordem = ["QUANT","COMP","LARG","MATERIAL","COR","DESCPECA","DES_PAI","CORTE","FITA","USINAGEM","PESO_UNIT","PESO_TOTAL"]
-                
-                for dp, g in df.groupby("DES_PAI", sort=False):
-                    ini = curr
-                    for _, r in g.iterrows():
-                        for i, c_nome in enumerate(col_ordem, 1):
-                            ws.cell(row=curr, column=i, value=r.get(c_nome, ""))
-                        soma += float(r.get("PESO_TOTAL", 0)); curr += 1
-                    if len(g) > 1:
-                        ws.merge_cells(start_row=ini, end_row=curr-1, start_column=7, end_column=7)
-                        ws.cell(row=ini, column=7).alignment = Alignment(vertical="center", horizontal="center")
-                    curr += 1
-                
-                ws.cell(row=curr+1, column=11, value="TOTAL:").font = Font(bold=True)
-                ws.cell(row=curr+1, column=12, value=f"{round(soma, 2)} kg").font = Font(bold=True)
-                
-                borda = Border(left=Side(style="thin"), right=Side(style="thin"), top=Side(style="thin"), bottom=Side(style="thin"))
-                for row in ws.iter_rows(min_row=3, max_row=curr-1):
-                    if any(cell.value for cell in row):
-                        for cell in row: cell.border = borda
-
-                for col_idx in range(1, 13):
-                    ws.column_dimensions[get_column_letter(col_idx)].width = 18
-
-            st.success(f"✅ Excel Marcenaria Pronto! Peso: {round(soma, 2)} kg")
-            st.download_button("📥 Baixar Planilha Marcenaria", output.getvalue(), f"PROD_{nome_f}.xlsx")
+            # Link Direto para Edição (Substitua pela URL da sua planilha se necessário)
+            st.markdown("""
+                <a href="https://docs.google.com/spreadsheets/d/SEU_ID_DA_PLANILHA_AQUI/edit#gid=ID_DA_ABA_CORES" target="_blank">
+                    <button style="background-color: #217346; color: white; padding: 10px; border: none; border-radius: 5px; cursor: pointer; width: 100%;">
+                        📝 Abrir Planilha de Cores no Google Sheets
+                    </button>
+                </a>
+                """, unsafe_allow_html=True)
+        except:
+            st.warning("Não foi possível carregar a visualização das cores.")
 
 # ==========================================
 # DIVISÃO 2: METALURGIA (PDF)
@@ -167,7 +197,7 @@ elif opcao == "⚙️ Metalurgia (PDF)":
             st.session_state.db_pesos_metro = conn.read(worksheet="PESO_POR_METRO", ttl=5)
             st.session_state.db_pesos_conjunto = conn.read(worksheet="PESO_CONJUNTO", ttl=5)
         except:
-            st.error("Erro ao carregar tabelas de Metalurgia do Google Sheets.")
+            st.error("Erro ao carregar tabelas de Metalurgia.")
 
     def calcular_metal(df_input):
         map_rules = st.session_state.db_mapeamento.to_dict('records')
@@ -218,12 +248,18 @@ elif opcao == "⚙️ Metalurgia (PDF)":
                 st.dataframe(res_met, use_container_width=True)
 
     with aba_db:
-        st.write("Dados sincronizados com Google Sheets")
-        if st.button("☁️ Salvar Alterações na Nuvem"):
-            try:
-                conn.update(worksheet="MAPEAMENTO_TIPO", data=st.session_state.db_mapeamento)
-                st.success("Dados salvos!")
-            except: st.error("Erro ao salvar.")
+        st.subheader("🛠️ Configurações de Metalurgia (Google Sheets)")
+        st.write("Dados sincronizados com o arquivo:")
+        [cite_start]st.info("Arquivo: base_metalurgia [cite: 1]")
+        
+        # Botão igual ao solicitado para acesso rápido
+        st.markdown("""
+            <a href="https://docs.google.com/spreadsheets/d/1X50eP68L8U9wX0XW77S_HlYjC1O7wX0XW77S_HlYjC1O/edit" target="_blank">
+                <button style="background-color: #217346; color: white; padding: 10px; border: none; border-radius: 5px; cursor: pointer; width: 100%;">
+                    📂 Abrir Planilha de Metalurgia Completa
+                </button>
+            </a>
+            """, unsafe_allow_html=True)
 
 # ==========================================
 # DIVISÃO 3: INÍCIO
