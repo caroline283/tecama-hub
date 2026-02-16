@@ -17,7 +17,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- 2. CSS PERSONALIZADO (LARANJA TECAMA) ---
+# --- 2. CSS PERSONALIZADO ---
 st.markdown("""
     <style>
     h1 { color: #FF5722; }
@@ -33,7 +33,6 @@ st.markdown("""
         border-left: 5px solid #FF5722;
         padding: 15px;
         border-radius: 5px;
-        box-shadow: 2px 2px 5px rgba(0,0,0,0.05);
     }
     </style>
     """, unsafe_allow_html=True)
@@ -41,7 +40,7 @@ st.markdown("""
 # --- 3. CONEXÃO COM GOOGLE SHEETS ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# --- 4. FUNÇÕES GERAIS E MARCENARIA ---
+# --- 4. FUNÇÕES MARCENARIA ---
 def norm(t):
     if not t or pd.isna(t): return ""
     t = unicodedata.normalize("NFD", str(t).upper()).encode("ascii", "ignore").decode("utf-8")
@@ -69,8 +68,7 @@ def calcular_pesos_madeira(larg, comp, quant, material_texto):
 
 # --- 5. MENU LATERAL ---
 with st.sidebar:
-    # --- LOGO TECAMA ---
-    # Tenta carregar o logo. Se não existir no GitHub, ignora para não dar erro.
+    # Mostra o logo se o arquivo estiver no GitHub
     if os.path.exists("logo_tecama.png"):
         st.image("logo_tecama.png", use_container_width=True)
     else:
@@ -78,27 +76,23 @@ with st.sidebar:
     
     opcao = st.radio("Selecione a Divisão:", ["🏠 Início", "🪵 Marcenaria (CSV)", "⚙️ Metalurgia (PDF)"])
     st.markdown("---")
-    st.info("**Dica:** Use a Marcenaria para arquivos CSV e a Metalurgia para relatórios em PDF.")
-    st.caption("Tecama Hub v5.6")
+    st.caption("Tecama Hub v5.7")
 
 # ==========================================
-# DIVISÃO 1: MARCENARIA (CONVERSOR CSV)
+# DIVISÃO 1: MARCENARIA
 # ==========================================
 if opcao == "🪵 Marcenaria (CSV)":
-    st.header("🪵 Divisão de Marcenaria")
-    
-    # Abas internas da Marcenaria
-    aba_csv, aba_config_cores = st.tabs(["📋 Conversor CSV", "🛠️ Configurar Cores"])
+    st.header("🪵 Marcenaria")
+    aba_csv, aba_cores = st.tabs(["📋 Conversor", "🛠️ Cores"])
 
     with aba_csv:
         try:
             df_cores_gs = conn.read(worksheet="CORES_MARCENARIA", ttl=5)
             m_cores = {norm(r["descricao"]): str(r["codigo"]).split('.')[0].strip() for _, r in df_cores_gs.iterrows()}
         except:
-            st.error("Erro: Aba 'CORES_MARCENARIA' não encontrada no Sheets.")
             m_cores = {}
 
-        up_csv = st.file_uploader("Suba o arquivo CSV da Marcenaria", type="csv")
+        up_csv = st.file_uploader("Upload CSV", type="csv")
         if up_csv:
             df_b = pd.read_csv(up_csv, sep=None, engine='python', dtype=str)
             nome_f = up_csv.name.replace(".csv", "").upper()
@@ -111,7 +105,7 @@ if opcao == "🪵 Marcenaria (CSV)":
             else:
                 tit = nome_f; df = df_b.copy()
 
-            if st.button("🚀 Gerar Excel de Produção"):
+            if st.button("🚀 Gerar Excel"):
                 df.columns = [norm(c) for c in df.columns]
                 pesos = df.apply(lambda r: calcular_pesos_madeira(r.get("LARG",0), r.get("COMP",0), r.get("QUANT",0), r["MATERIAL"]), axis=1)
                 df["PESO_UNIT"] = pesos.apply(lambda x: x[0])
@@ -119,10 +113,9 @@ if opcao == "🪵 Marcenaria (CSV)":
                 
                 if "COR" in df.columns: 
                     df["COR"] = df["COR"].apply(lambda x: m_cores.get(norm(x), str(x).split('.')[0]))
-                    
+                
                 df["MATERIAL"] = df["MATERIAL"].apply(limpa_material)
                 for c in ["CORTE", "FITA", "USINAGEM"]: df[c] = ""
-                
                 if "DES_PAI" in df.columns: df = df.sort_values(by="DES_PAI")
 
                 output = io.BytesIO()
@@ -157,47 +150,33 @@ if opcao == "🪵 Marcenaria (CSV)":
                     for row in ws.iter_rows(min_row=3, max_row=curr-1):
                         if any(cell.value for cell in row):
                             for cell in row: cell.border = borda
-
                     for col_idx in range(1, 13):
                         ws.column_dimensions[get_column_letter(col_idx)].width = 18
 
-                st.success(f"✅ Excel Marcenaria Pronto! Peso: {round(soma, 2)} kg")
-                st.download_button("📥 Baixar Planilha Marcenaria", output.getvalue(), f"PROD_{nome_f}.xlsx")
+                st.download_button("📥 Baixar Excel", output.getvalue(), f"PROD_{nome_f}.xlsx")
 
-    with aba_config_cores:
-        st.subheader("🛠️ Gestão de Cores (Google Sheets)")
-        st.write("Abaixo estão as cores cadastradas na sua planilha base.")
-        
+    with aba_cores:
+        st.subheader("🛠️ Gestão de Cores")
         try:
-            # Mostra a tabela atual de cores
-            df_view_cores = conn.read(worksheet="CORES_MARCENARIA", ttl=0)
-            st.dataframe(df_view_cores, use_container_width=True)
-            
-            # Link Direto para Edição (Substitua pela URL da sua planilha se necessário)
-            st.markdown("""
-                <a href="https://docs.google.com/spreadsheets/d/SEU_ID_DA_PLANILHA_AQUI/edit#gid=ID_DA_ABA_CORES" target="_blank">
-                    <button style="background-color: #217346; color: white; padding: 10px; border: none; border-radius: 5px; cursor: pointer; width: 100%;">
-                        📝 Abrir Planilha de Cores no Google Sheets
-                    </button>
-                </a>
-                """, unsafe_allow_html=True)
+            df_v = conn.read(worksheet="CORES_MARCENARIA", ttl=0)
+            st.dataframe(df_v, use_container_width=True)
+            st.markdown(f'<a href="https://docs.google.com/spreadsheets/d/{st.secrets["connections"]["gsheets"]["spreadsheet"]}/edit" target="_blank"><button style="background-color: #217346; color: white; padding: 10px; width: 100%; border: none; border-radius: 5px;">📝 Abrir Planilha Google</button></a>', unsafe_allow_html=True)
         except:
-            st.warning("Não foi possível carregar a visualização das cores.")
+            st.warning("Verifique a aba CORES_MARCENARIA.")
 
 # ==========================================
-# DIVISÃO 2: METALURGIA (PDF)
+# DIVISÃO 2: METALURGIA
 # ==========================================
 elif opcao == "⚙️ Metalurgia (PDF)":
-    st.header("⚙️ Metalurgia System 3.0")
-
-    # Funções de Dados da Metalurgia
+    st.header("⚙️ Metalurgia")
+    
     if 'db_mapeamento' not in st.session_state:
         try:
             st.session_state.db_mapeamento = conn.read(worksheet="MAPEAMENTO_TIPO", ttl=5)
             st.session_state.db_pesos_metro = conn.read(worksheet="PESO_POR_METRO", ttl=5)
             st.session_state.db_pesos_conjunto = conn.read(worksheet="PESO_CONJUNTO", ttl=5)
         except:
-            st.error("Erro ao carregar tabelas de Metalurgia.")
+            st.error("Erro nas tabelas de Metalurgia.")
 
     def calcular_metal(df_input):
         map_rules = st.session_state.db_mapeamento.to_dict('records')
@@ -230,7 +209,7 @@ elif opcao == "⚙️ Metalurgia (PDF)":
     aba_calc, aba_db = st.tabs(["📋 Calculadora", "🛠️ Base de Dados"])
 
     with aba_calc:
-        up_pdf = st.file_uploader("Suba o PDF da Metalurgia", type="pdf")
+        up_pdf = st.file_uploader("Upload PDF", type="pdf")
         if up_pdf:
             itens = []
             with pdfplumber.open(up_pdf) as pdf:
@@ -242,34 +221,15 @@ elif opcao == "⚙️ Metalurgia (PDF)":
                                 itens.append({"QTD": row[0], "DESCRIÇÃO": row[1], "MEDIDA": row[3], "COR": row[2]})
             
             df_edit = st.data_editor(pd.DataFrame(itens), num_rows="dynamic", use_container_width=True)
-            if st.button("🚀 Calcular Pesos Metálicos"):
+            if st.button("🚀 Calcular"):
                 res_met = calcular_metal(df_edit)
-                st.metric("Peso Total Metalurgia", f"{res_met['PESO_TOTAL'].sum():.2f} kg")
+                st.metric("Total", f"{res_met['PESO_TOTAL'].sum():.2f} kg")
                 st.dataframe(res_met, use_container_width=True)
 
     with aba_db:
-        st.subheader("🛠️ Configurações de Metalurgia (Google Sheets)")
-        st.write("Dados sincronizados com o arquivo:")
-        [cite_start]st.info("Arquivo: base_metalurgia [cite: 1]")
-        
-        # Botão igual ao solicitado para acesso rápido
-        st.markdown("""
-            <a href="https://docs.google.com/spreadsheets/d/1X50eP68L8U9wX0XW77S_HlYjC1O7wX0XW77S_HlYjC1O/edit" target="_blank">
-                <button style="background-color: #217346; color: white; padding: 10px; border: none; border-radius: 5px; cursor: pointer; width: 100%;">
-                    📂 Abrir Planilha de Metalurgia Completa
-                </button>
-            </a>
-            """, unsafe_allow_html=True)
+        st.info("Arquivo: base_metalurgia")
+        st.markdown(f'<a href="https://docs.google.com/spreadsheets/d/{st.secrets["connections"]["gsheets"]["spreadsheet"]}/edit" target="_blank"><button style="background-color: #217346; color: white; padding: 10px; width: 100%; border: none; border-radius: 5px;">📂 Abrir Planilha Metalurgia</button></a>', unsafe_allow_html=True)
 
-# ==========================================
-# DIVISÃO 3: INÍCIO
-# ==========================================
 elif opcao == "🏠 Início":
-    st.title("Bem-vindo ao Tecama Hub Industrial")
-    st.markdown("""
-    Este é o seu portal unificado de fábrica.
-    
-    1. **Marcenaria:** Para arquivos CSV (converte nomes, códigos de cores e gera lista de corte).
-    2. **Metalurgia:** Para relatórios em PDF (extrai peças e calcula pesos de tubos e conjuntos).
-    """)
-    st.info("Selecione uma opção no menu à esquerda para começar.")
+    st.title("Tecama Hub")
+    st.info("Selecione Marcenaria ou Metalurgia no menu lateral.")
