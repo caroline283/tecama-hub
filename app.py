@@ -55,7 +55,7 @@ with st.sidebar:
     st.markdown("<h1 style='text-align: center;'>🏗️ TECAMA</h1>", unsafe_allow_html=True)
     opcao = st.radio("Selecione a Divisão:", ["🏠 Início", "🪵 Marcenaria (CSV)", "⚙️ Metalurgia (PDF)"])
     st.markdown("---")
-    st.caption("Tecama Hub v5.1")
+    st.caption("Tecama Hub v5.2")
 
 # ==========================================
 # DIVISÃO 1: MARCENARIA (CONVERSOR CSV)
@@ -65,7 +65,8 @@ if opcao == "🪵 Marcenaria (CSV)":
     
     try:
         df_cores_gs = conn.read(worksheet="CORES_MARCENARIA", ttl=5)
-        m_cores = {norm(r["descricao"]): str(r["codigo"]).strip() for _, r in df_cores_gs.iterrows()}
+        # Garante que o código da cor seja lido sem .0
+        m_cores = {norm(r["descricao"]): str(r["codigo"]).split('.')[0].strip() for _, r in df_cores_gs.iterrows()}
     except:
         st.error("Erro: Aba 'CORES_MARCENARIA' não encontrada no Sheets.")
         m_cores = {}
@@ -90,7 +91,10 @@ if opcao == "🪵 Marcenaria (CSV)":
             pesos = df.apply(lambda r: calcular_pesos_madeira(r.get("LARG",0), r.get("COMP",0), r.get("QUANT",0), r["MATERIAL"]), axis=1)
             df["PESO_UNIT"] = pesos.apply(lambda x: x[0])
             df["PESO_TOTAL"] = pesos.apply(lambda x: x[1])
-            if "COR" in df.columns: df["COR"] = df["COR"].apply(lambda x: m_cores.get(norm(x), x))
+            
+            if "COR" in df.columns: 
+                df["COR"] = df["COR"].apply(lambda x: m_cores.get(norm(x), str(x).split('.')[0]))
+                
             df["MATERIAL"] = df["MATERIAL"].apply(limpa_material)
             for c in ["CORTE", "FITA", "USINAGEM"]: df[c] = ""
             
@@ -116,25 +120,35 @@ if opcao == "🪵 Marcenaria (CSV)":
                         for i, c_nome in enumerate(col_ordem, 1):
                             ws.cell(row=curr, column=i, value=r.get(c_nome, ""))
                         soma += float(r.get("PESO_TOTAL", 0)); curr += 1
+                    
                     if len(g) > 1:
                         ws.merge_cells(start_row=ini, end_row=curr-1, start_column=7, end_column=7)
                         ws.cell(row=ini, column=7).alignment = Alignment(vertical="center", horizontal="center")
+                    
+                    # Pula linha sem adicionar bordas nela
                     curr += 1
                 
                 ws.cell(row=curr+1, column=11, value="TOTAL:").font = Font(bold=True)
                 ws.cell(row=curr+1, column=12, value=f"{round(soma, 2)} kg").font = Font(bold=True)
                 
-                # Bordas e AutoFit
+                # Bordas seletivas (Apenas se a linha tiver conteúdo)
                 borda = Border(left=Side(style="thin"), right=Side(style="thin"), top=Side(style="thin"), bottom=Side(style="thin"))
+                for row in ws.iter_rows(min_row=3, max_row=curr-1):
+                    # Verifica se a linha não é a separadora (testando se a primeira célula tem valor)
+                    if any(cell.value for cell in row):
+                        for cell in row:
+                            cell.border = borda
+
+                # AutoFit (Ignora células mescladas para evitar erros)
                 for col_idx in range(1, 13):
                     max_l = 0
                     for row_idx in range(3, curr):
                         cell = ws.cell(row=row_idx, column=col_idx)
-                        if cell.value: max_l = max(max_l, len(str(cell.value)))
-                        if cell.row >= 3: cell.border = borda
-                    ws.column_dimensions[get_column_letter(col_idx)].width = max_l + 4
+                        if cell.value and not any(cell.coordinate in rng for rng in ws.merged_cells.ranges):
+                            max_l = max(max_l, len(str(cell.value)))
+                    ws.column_dimensions[get_column_letter(col_idx)].width = max_l + 5
 
-            st.success(f"✅ Sucesso! Peso Total: {round(soma, 2)} kg")
+            st.success(f"✅ Excel formatado com sucesso! Peso: {round(soma, 2)} kg")
             st.download_button("📥 Baixar Planilha", output.getvalue(), f"PROD_{nome_f}.xlsx")
 
 # ==========================================
@@ -142,9 +156,9 @@ if opcao == "🪵 Marcenaria (CSV)":
 # ==========================================
 elif opcao == "⚙️ Metalurgia (PDF)":
     st.header("⚙️ Metalurgia System")
-    # --- COLOQUE SUA LÓGICA DE PDF AQUI ---
-    st.info("Área de cálculo de estruturas metálicas ativa.")
+    st.info("Área de cálculo de estruturas metálicas ativa conforme base de dados do GSheets.")
+    # Cole aqui sua lógica PDF se necessário
 
 elif opcao == "🏠 Início":
-    st.title("Bem-vindo ao Hub Industrial Tecama")
-    st.write("Selecione Marcenaria ou Metalurgia no menu lateral.")
+    st.title("Hub Industrial Tecama")
+    st.write("Portal unificado para processamento de marcenaria e metalurgia.")
