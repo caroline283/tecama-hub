@@ -40,7 +40,7 @@ st.markdown("""
 # --- 3. CONEXÃO COM GOOGLE SHEETS ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# --- 4. FUNÇÕES MARCENARIA ---
+# --- 4. FUNÇÕES AUXILIARES ---
 def norm(t):
     if not t or pd.isna(t): return ""
     t = unicodedata.normalize("NFD", str(t).upper()).encode("ascii", "ignore").decode("utf-8")
@@ -73,16 +73,17 @@ with st.sidebar:
     else:
         st.markdown("<h1 style='text-align: center;'>🏗️ TECAMA</h1>", unsafe_allow_html=True)
     
-    opcao = st.radio("Selecione a Divisão:", ["🏠 Início", "🪚 Marcenaria", "⚙️ Metalurgia"])
+    # Ícone de Tronco de Madeira (🪵) para a Marcenaria
+    opcao = st.radio("Selecione a Divisão:", ["🏠 Início", "🪵 Marcenaria", "⚙️ Metalurgia"])
     st.markdown("---")
-    st.caption("Tecama Hub v5.9")
+    st.caption("Tecama Hub v6.1")
 
 # ==========================================
-# DIVISÃO 1: MARCENARIA (🪚)
+# DIVISÃO 1: MARCENARIA
 # ==========================================
-if opcao == "🪚 Marcenaria":
-    st.header("🪚 Divisão de Marcenaria")
-    aba_conv, aba_cores = st.tabs(["📋 Conversor CSV", "🛠️ Gerenciar Cores"])
+if opcao == "🪵 Marcenaria":
+    st.header("🪵 Divisão de Marcenaria")
+    aba_conv, aba_cores = st.tabs(["📋 Conversor CSV", "🎨 Gerenciar Cores"])
 
     with aba_conv:
         try:
@@ -155,31 +156,28 @@ if opcao == "🪚 Marcenaria":
                 st.download_button("📥 Baixar Excel Marcenaria", output.getvalue(), f"PROD_{nome_f}.xlsx")
 
     with aba_cores:
-        st.subheader("🛠️ Editor Direto de Cores")
-        st.write("Edite as informações abaixo e clique em salvar para atualizar o Google Sheets.")
+        st.subheader("🎨 Editor de Cores (Google Sheets)")
         df_cores_edit = conn.read(worksheet="CORES_MARCENARIA", ttl=0)
-        
-        # TABELA EDITÁVEL
-        novas_cores = st.data_editor(df_cores_edit, num_rows="dynamic", use_container_width=True)
-        
+        cores_novas = st.data_editor(df_cores_edit, num_rows="dynamic", use_container_width=True)
         if st.button("💾 Salvar Alterações de Cores"):
-            conn.update(worksheet="CORES_MARCENARIA", data=novas_cores)
-            st.success("Tabela de Cores atualizada com sucesso!")
+            conn.update(worksheet="CORES_MARCENARIA", data=cores_novas)
+            st.success("Tabela de Cores salva!")
 
 # ==========================================
 # DIVISÃO 2: METALURGIA
 # ==========================================
 elif opcao == "⚙️ Metalurgia":
     st.header("⚙️ Divisão de Metalurgia")
-    aba_calc, aba_db = st.tabs(["📋 Calculadora PDF", "🛠️ Gerenciar Base"])
+    aba_calc, aba_db = st.tabs(["📋 Calculadora PDF", "🛠️ Gerenciar Tabelas"])
 
+    # Carregamento seguro dos dados da metalurgia
     if 'db_mapeamento' not in st.session_state:
         try:
             st.session_state.db_mapeamento = conn.read(worksheet="MAPEAMENTO_TIPO", ttl=5)
             st.session_state.db_pesos_metro = conn.read(worksheet="PESO_POR_METRO", ttl=5)
             st.session_state.db_pesos_conjunto = conn.read(worksheet="PESO_CONJUNTO", ttl=5)
         except:
-            st.error("Erro ao conectar com as tabelas de Metalurgia.")
+            st.error("Erro ao carregar dados da Metalurgia.")
 
     with aba_calc:
         def calcular_metal(df_input):
@@ -210,33 +208,35 @@ elif opcao == "⚙️ Metalurgia":
                 resultados.append({"QTD": qtd, "DESCRIÇÃO": desc, "MEDIDA": row['MEDIDA'], "TIPO": tipo_final, "PESO_TOTAL": round(peso_unit * qtd, 3)})
             return pd.DataFrame(resultados)
 
-        up_pdf = st.file_uploader("Upload Relatório PDF", type="pdf")
+        up_pdf = st.file_uploader("Upload PDF Metalurgia", type="pdf")
         if up_pdf:
-            itens = []
+            itens_pdf = []
             with pdfplumber.open(up_pdf) as pdf:
                 for page in pdf.pages:
-                    tables = page.extract_tables()
-                    for table in tables:
-                        for row in table:
-                            if len(row) > 3 and str(row[0]).strip().replace('.','').isdigit():
-                                itens.append({"QTD": row[0], "DESCRIÇÃO": row[1], "MEDIDA": row[3], "COR": row[2]})
+                    tabs = page.extract_tables()
+                    for tab in tabs:
+                        for r in tab:
+                            if len(r) > 3 and str(r[0]).strip().replace('.','').isdigit():
+                                itens_pdf.append({"QTD": r[0], "DESCRIÇÃO": r[1], "MEDIDA": r[3], "COR": r[2]})
             
-            df_edit = st.data_editor(pd.DataFrame(itens), num_rows="dynamic", use_container_width=True)
+            df_edit_pdf = st.data_editor(pd.DataFrame(itens_pdf), num_rows="dynamic", use_container_width=True)
             if st.button("🚀 Calcular Pesos Metálicos"):
-                res_met = calcular_metal(df_edit)
-                st.metric("Peso Total Estimado", f"{res_met['PESO_TOTAL'].sum():.2f} kg")
-                st.dataframe(res_met, use_container_width=True)
+                res = calcular_metal(df_edit_pdf)
+                st.metric("Total", f"{res['PESO_TOTAL'].sum():.2f} kg")
+                st.dataframe(res, use_container_width=True)
 
     with aba_db:
-        st.subheader("🛠️ Editor de Regras (Metalurgia)")
-        df_map_edit = conn.read(worksheet="MAPEAMENTO_TIPO", ttl=0)
+        st.subheader("📂 Editor de Bases da Metalurgia")
+        # Menu para escolher qual aba editar na metalurgia
+        tabela_sel = st.selectbox("Escolha a aba para editar:", ["MAPEAMENTO_TIPO", "PESO_POR_METRO", "PESO_CONJUNTO"])
         
-        novo_mapeamento = st.data_editor(df_map_edit, num_rows="dynamic", use_container_width=True)
+        df_edit_m = conn.read(worksheet=tabela_sel, ttl=0)
+        novos_dados_m = st.data_editor(df_edit_m, num_rows="dynamic", use_container_width=True)
         
-        if st.button("💾 Salvar Regras de Metalurgia"):
-            conn.update(worksheet="MAPEAMENTO_TIPO", data=novo_mapeamento)
-            st.success("Regras de mapeamento atualizadas!")
+        if st.button(f"💾 Salvar alterações em {tabela_sel}"):
+            conn.update(worksheet=tabela_sel, data=novos_dados_m)
+            st.success(f"Tabela {tabela_sel} atualizada com sucesso!")
 
 elif opcao == "🏠 Início":
     st.title("🏗️ Tecama Hub Industrial")
-    st.info("Utilize o menu lateral para acessar a Marcenaria (Ícone de Serrote) ou a Metalurgia (Ícone de Engrenagem).")
+    st.info("Sistema unificado para Marcenaria e Metalurgia.")
