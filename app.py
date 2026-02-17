@@ -12,11 +12,14 @@ from openpyxl.styles import Alignment, Border, Side, Font
 # --- 1. CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Tecama Hub Industrial", layout="wide", page_icon="🏗️")
 
-# --- 2. CSS PERSONALIZADO ---
+# --- 2. CSS PERSONALIZADO (VISUAL v6.6) ---
 st.markdown("""
     <style>
     [data-testid="stSidebar"] .stRadio div[role="radiogroup"] label { font-size: 22px !important; font-weight: 600 !important; color: #333 !important; }
     h1 { color: #FF5722 !important; font-family: 'Segoe UI', sans-serif; }
+    h3 { color: #444 !important; }
+    
+    /* Títulos clicáveis na Home */
     .home-link .stButton > button {
         background-color: transparent !important;
         color: #FF5722 !important;
@@ -30,6 +33,8 @@ st.markdown("""
         box-shadow: none !important;
     }
     .home-link .stButton > button:hover { color: #E64A19 !important; text-decoration: none !important; }
+
+    /* Botões Laranja */
     .stButton > button {
         background-color: #FF5722;
         color: white;
@@ -80,29 +85,44 @@ with st.sidebar:
     opcao = st.radio("NAVEGAÇÃO", ["🏠 Início", "🌲 Marcenaria", "⚙️ Metalurgia"], 
                      index=["🏠 Início", "🌲 Marcenaria", "⚙️ Metalurgia"].index(st.session_state.nav))
     st.session_state.nav = opcao
-    st.caption("Tecama Hub Industrial v7.3")
+    st.caption("Tecama Hub Industrial v7.4")
 
 # ==========================================
-# PÁGINA: INÍCIO
+# PÁGINA: INÍCIO (TEXTO v6.6 INTEGRAL)
 # ==========================================
 if st.session_state.nav == "🏠 Início":
     st.title("Tecama Hub Industrial")
     st.markdown("### Bem-vindo ao Sistema Unificado de Produção")
-    st.write("Plataforma centralizada para Marcenaria e Metalurgia (Sistema Pontta).")
+    st.write("Esta plataforma foi desenvolvida para centralizar as operações das divisões de **Marcenaria** e **Metalurgia**, garantindo agilidade no processamento de pedidos e precisão nos cálculos de engenharia.")
     st.markdown("---")
+    
     st.markdown('<div class="home-link">', unsafe_allow_html=True)
     if st.button("🌲 Divisão de Marcenaria"):
         st.session_state.nav = "🌲 Marcenaria"
         st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
-    st.write("Processamento de arquivos CSV (Pontta) com cálculo automático de pesos.")
+    
+    st.markdown("""
+    A página de Marcenaria é focada no **processamento de arquivos CSV gerados pelo Pontta**.
+    * **Conversor:** Transforma listas brutas em planilhas de produção limpas, com nomes de materiais padronizados e cálculo automático de pesos.
+    * **Gestão de Cores:** Permite editar em tempo real a tabela de códigos de cores, garantindo que o PDF de produção saia com as cores corretas da fábrica.
+    """)
+    
     st.markdown("<br>", unsafe_allow_html=True)
+    
     st.markdown('<div class="home-link">', unsafe_allow_html=True)
     if st.button("⚙️ Divisão de Metalurgia"):
         st.session_state.nav = "⚙️ Metalurgia"
         st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
-    st.write("Levantamento automático de peso através do relatório PDF (Pontta).")
+    
+    st.markdown("""
+    A página de Metalurgia **automatiza o levantamento de peso de estruturas metálicas através do relatório de metalurgia em PDF gerado pelo Pontta**.
+    * **Calculadora:** Extrai tabelas de relatórios técnicos e aplica cálculos de peso baseados na seção dos tubos e pesos de conjuntos cadastrados.
+    * **Gestão de Tabelas:** Controle total sobre os pesos por metro, conjuntos e regras de mapeamento de texto.
+    """)
+    st.markdown("---")
+    st.info("Selecione uma divisão no menu lateral para começar.")
 
 # ==========================================
 # PÁGINA: MARCENARIA
