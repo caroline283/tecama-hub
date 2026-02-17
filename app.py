@@ -12,12 +12,14 @@ from openpyxl.styles import Alignment, Border, Side, Font
 # --- 1. CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Tecama Hub Industrial", layout="wide", page_icon="🏗️")
 
-# --- 2. CSS PARA VISUAL ---
+# --- 2. CSS PARA VISUAL (v6.6 STYLE) ---
 st.markdown("""
     <style>
     [data-testid="stSidebar"] .stRadio div[role="radiogroup"] label { font-size: 22px !important; font-weight: 600 !important; color: #333 !important; }
-    h1 { color: #FF5722 !important; }
-    .stButton > button { background-color: #FF5722; color: white; width: 100%; border-radius: 12px; font-weight: bold; height: 3.5em; }
+    h1 { color: #FF5722 !important; font-family: 'Segoe UI', sans-serif; }
+    h3 { color: #444 !important; }
+    .stButton > button { background-color: #FF5722; color: white; width: 100%; border-radius: 12px; font-weight: bold; height: 3.5em; font-size: 16px; border: none; }
+    .stButton > button:hover { background-color: #E64A19; transform: translateY(-2px); }
     </style>
     """, unsafe_allow_html=True)
 
@@ -26,7 +28,6 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 # --- 3. FUNÇÕES AUXILIARES ---
 def norm(t):
     if not t or pd.isna(t): return ""
-    # Normaliza o texto: remove acentos e remove espaços duplos/quebras de linha
     t = unicodedata.normalize("NFD", str(t).upper()).encode("ascii", "ignore").decode("utf-8")
     return " ".join(t.split()).strip()
 
@@ -53,28 +54,45 @@ def calcular_pesos_madeira(larg, comp, quant, material_texto):
 # --- 4. MENU LATERAL ---
 with st.sidebar:
     if os.path.exists("logo_tecama.png"): st.image("logo_tecama.png", use_container_width=True)
-    opcao = st.radio("NAVEGAÇÃO", ["🏠 Início", "🌲 Marcenaria", "⚙️ Metalurgia"])
-    st.caption("Tecama Hub v6.9")
+    if 'nav' not in st.session_state: st.session_state.nav = "🏠 Início"
+    
+    # Sincroniza o radio button com o session_state para permitir navegação via botões
+    opcao = st.radio("NAVEGAÇÃO", ["🏠 Início", "🌲 Marcenaria", "⚙️ Metalurgia"], 
+                     index=["🏠 Início", "🌲 Marcenaria", "⚙️ Metalurgia"].index(st.session_state.nav))
+    st.session_state.nav = opcao
+    st.caption("Tecama Hub Industrial v7.0")
 
 # ==========================================
-# PÁGINA: INÍCIO (v6.6 TEXTS)
+# PÁGINA: INÍCIO (COM BOTÕES DE ATALHO)
 # ==========================================
-if opcao == "🏠 Início":
+if st.session_state.nav == "🏠 Início":
     st.title("Tecama Hub Industrial")
     st.markdown("### Bem-vindo ao Sistema Unificado de Produção")
-    st.write("Esta plataforma centraliza as operações das divisões de **Marcenaria** e **Metalurgia**, garantindo agilidade e precisão através do sistema **Pontta**.")
+    st.write("Esta plataforma centraliza as operações das divisões integradas ao sistema **Pontta**.")
     st.markdown("---")
-    st.subheader("🌲 Divisão de Marcenaria")
-    st.write("Processamento de arquivos CSV gerados pelo **Pontta**.")
-    st.subheader("⚙️ Divisão de Metalurgia")
-    st.write("Automatiza o levantamento de peso de estruturas metálicas através do relatório PDF gerado pelo **Pontta**.")
+    
+    col_a, col_b = st.columns(2)
+    
+    with col_a:
+        st.subheader("🌲 Divisão de Marcenaria")
+        st.write("Processamento de arquivos CSV gerados pelo Pontta com padronização e pesos.")
+        if st.button("Ir para Marcenaria"):
+            st.session_state.nav = "🌲 Marcenaria"
+            st.rerun()
+            
+    with col_b:
+        st.subheader("⚙️ Divisão de Metalurgia")
+        st.write("Automatiza o levantamento de peso através do relatório PDF gerado pelo Pontta.")
+        if st.button("Ir para Metalurgia"):
+            st.session_state.nav = "⚙️ Metalurgia"
+            st.rerun()
 
 # ==========================================
 # PÁGINA: MARCENARIA
 # ==========================================
-elif opcao == "🌲 Marcenaria":
-    st.header("🌲 Operações de Marcenaria")
-    aba_conv, aba_cores = st.tabs(["📋 Processar Pedido (CSV)", "🎨 Editar Tabela de Cores"])
+elif st.session_state.nav == "🌲 Marcenaria":
+    st.header("🌲 Marcenaria")
+    aba_conv, aba_cores = st.tabs(["📋 Processar Pedido", "🎨 Editar Cores"])
 
     with aba_conv:
         try:
@@ -123,17 +141,11 @@ elif opcao == "🌲 Marcenaria":
                     ws.cell(row=curr+1, column=11, value="TOTAL:").font = Font(bold=True)
                     ws.cell(row=curr+1, column=12, value=f"{round(soma, 2)} kg").font = Font(bold=True)
                     
-                    borda = Border(left=Side(style="thin"), right=Side(style="thin"), top=Side(style="thin"), bottom=Side(style="thin"))
-                    for row in ws.iter_rows(min_row=3, max_row=curr-1):
-                        if any(cell.value for cell in row):
-                            for cell in row: cell.border = borda
-
                     for i, col in enumerate(ws.columns, 1):
                         letter = get_column_letter(i)
-                        if letter == 'G': ws.column_dimensions[letter].width = 30
-                        else: ws.column_dimensions[letter].width = 15
+                        ws.column_dimensions[letter].width = 30 if letter == 'G' else 15
                             
-                st.download_button("📥 Baixar Planilha Marcenaria", output.getvalue(), f"PROD_{nome_f}.xlsx")
+                st.download_button("📥 Baixar Excel Marcenaria", output.getvalue(), f"PROD_{nome_f}.xlsx")
 
     with aba_cores:
         st.subheader("🎨 Editor de Cores")
@@ -146,16 +158,14 @@ elif opcao == "🌲 Marcenaria":
 # ==========================================
 # PÁGINA: METALURGIA
 # ==========================================
-elif opcao == "⚙️ Metalurgia":
+elif st.session_state.nav == "⚙️ Metalurgia":
     st.header("⚙️ Metalurgia")
     aba_calc, aba_db = st.tabs(["📋 Calculadora PDF", "🛠️ Gerenciar Tabelas"])
 
     if 'db_mapeamento' not in st.session_state:
-        try:
-            st.session_state.db_mapeamento = conn.read(worksheet="MAPEAMENTO_TIPO", ttl=5)
-            st.session_state.db_pesos_metro = conn.read(worksheet="PESO_POR_METRO", ttl=5)
-            st.session_state.db_pesos_conjunto = conn.read(worksheet="PESO_CONJUNTO", ttl=5)
-        except: st.error("Erro no Banco de Dados.")
+        st.session_state.db_mapeamento = conn.read(worksheet="MAPEAMENTO_TIPO", ttl=5)
+        st.session_state.db_pesos_metro = conn.read(worksheet="PESO_POR_METRO", ttl=5)
+        st.session_state.db_pesos_conjunto = conn.read(worksheet="PESO_CONJUNTO", ttl=5)
 
     with aba_calc:
         def calcular_metal(df_input):
@@ -164,36 +174,27 @@ elif opcao == "⚙️ Metalurgia":
             dict_conjunto = dict(zip(st.session_state.db_pesos_conjunto['nome_conjunto'].apply(norm), st.session_state.db_pesos_conjunto['peso_unit_kg']))
             res = []
             for _, r in df_input.iterrows():
-                # Normalização pesada aqui para ignorar quebras de linha do PDF
-                desc_bruta = str(r['DESCRIÇÃO'])
-                desc_limpa = norm(desc_bruta)
+                desc_limpa = norm(str(r['DESCRIÇÃO']))
                 qtd = float(r['QTD']) if r['QTD'] else 0.0
                 tipo = "DESCONHECIDO"
-                
-                # Busca Inteligente: Verifica se a regra do Sheets está contida na descrição limpa
                 for regra in map_rules:
-                    regra_texto = norm(regra['texto_contido'])
-                    if regra_texto in desc_limpa:
-                        tipo = regra['tipo']
-                        break
-                
+                    if norm(regra['texto_contido']) in desc_limpa:
+                        tipo = regra['tipo']; break
                 if tipo == "IGNORAR": continue
-
                 medida = 0.0
                 try: medida = float(str(r['MEDIDA']).lower().replace('mm','').replace(',','.').strip())
                 except: pass
-
+                
+                # --- CALCULO PESO UNITÁRIO ---
                 p_unit = 0.0
                 if tipo == 'CONJUNTO':
                     for n_conj, p_val in dict_conjunto.items():
-                        if n_conj in desc_limpa:
-                            p_unit = p_val
-                            break
+                        if n_conj in desc_limpa: p_unit = p_val; break
                 elif 'tubo' in tipo.lower():
                     sec = norm(tipo.lower().replace('tubo ', '').strip())
                     p_unit = (medida/1000) * dict_metro.get(sec, 0.0)
                 
-                res.append({"QTD": qtd, "DESCRIÇÃO": desc_bruta, "MEDIDA": r['MEDIDA'], "TIPO": tipo, "PESO_TOTAL": round(p_unit * qtd, 3)})
+                res.append({"QTD": qtd, "DESCRIÇÃO": str(r['DESCRIÇÃO']), "MEDIDA": r['MEDIDA'], "TIPO": tipo, "PESO_UNIT": round(p_unit, 3), "PESO_TOTAL": round(p_unit * qtd, 3)})
             return pd.DataFrame(res)
 
         up_pdf = st.file_uploader("Suba o PDF Pontta", type="pdf")
@@ -208,7 +209,7 @@ elif opcao == "⚙️ Metalurgia":
                                 itens.append({"QTD": r[0], "DESCRIÇÃO": r[1], "MEDIDA": r[3], "COR": r[2]})
             
             df_edit = st.data_editor(pd.DataFrame(itens), num_rows="dynamic", use_container_width=True)
-            if st.button("🚀 Calcular e Gerar Excel"):
+            if st.button("🚀 Calcular e Gerar Excel Detalhado"):
                 res_met = calcular_metal(df_edit)
                 st.metric("Peso Total", f"{res_met['PESO_TOTAL'].sum():.2f} kg")
                 st.dataframe(res_met, use_container_width=True)
@@ -218,8 +219,8 @@ elif opcao == "⚙️ Metalurgia":
                     res_met.to_excel(writer, index=False, sheet_name="METALURGIA", startrow=1)
                     ws_met = writer.sheets["METALURGIA"]
                     last_row = len(res_met) + 3
-                    ws_met.cell(row=last_row, column=4, value="TOTAL GERAL:").font = Font(bold=True)
-                    ws_met.cell(row=last_row, column=5, value=f"{res_met['PESO_TOTAL'].sum():.2f} kg").font = Font(bold=True)
+                    ws_met.cell(row=last_row, column=5, value="TOTAL GERAL:").font = Font(bold=True)
+                    ws_met.cell(row=last_row, column=6, value=f"{res_met['PESO_TOTAL'].sum():.2f} kg").font = Font(bold=True)
                     for col in ws_met.columns:
                         ws_met.column_dimensions[col[0].column_letter].width = 25
                 st.download_button("📥 Baixar Excel Metalurgia", output_met.getvalue(), f"METAL_{up_pdf.name}.xlsx")
@@ -228,7 +229,7 @@ elif opcao == "⚙️ Metalurgia":
         if 'tab_m' not in st.session_state: st.session_state.tab_m = "MAPEAMENTO_TIPO"
         c1, c2, c3 = st.columns(3)
         if c1.button("📋 Mapeamento"): st.session_state.tab_m = "MAPEAMENTO_TIPO"
-        if c2.button("⚖️ Tubos"): st.session_state.tab_m = "PES_POR_METRO"
+        if c2.button("⚖️ Tubos"): st.session_state.tab_m = "PESO_POR_METRO"
         if c3.button("📦 Conjuntos"): st.session_state.tab_m = "PESO_CONJUNTO"
         df_m = conn.read(worksheet=st.session_state.tab_m, ttl=0)
         dados_novos = st.data_editor(df_m, num_rows="dynamic", use_container_width=True)
