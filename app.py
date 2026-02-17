@@ -68,31 +68,30 @@ def calcular_pesos_madeira(larg, comp, quant, material_texto):
 
 # --- 5. MENU LATERAL ---
 with st.sidebar:
-    # Mostra o logo se o arquivo estiver no GitHub
     if os.path.exists("logo_tecama.png"):
         st.image("logo_tecama.png", use_container_width=True)
     else:
         st.markdown("<h1 style='text-align: center;'>🏗️ TECAMA</h1>", unsafe_allow_html=True)
     
-    opcao = st.radio("Selecione a Divisão:", ["🏠 Início", "🪵 Marcenaria (CSV)", "⚙️ Metalurgia (PDF)"])
+    opcao = st.radio("Selecione a Divisão:", ["🏠 Início", "🪚 Marcenaria", "⚙️ Metalurgia"])
     st.markdown("---")
-    st.caption("Tecama Hub v5.7")
+    st.caption("Tecama Hub v5.9")
 
 # ==========================================
-# DIVISÃO 1: MARCENARIA
+# DIVISÃO 1: MARCENARIA (🪚)
 # ==========================================
-if opcao == "🪵 Marcenaria (CSV)":
-    st.header("🪵 Marcenaria")
-    aba_csv, aba_cores = st.tabs(["📋 Conversor", "🛠️ Cores"])
+if opcao == "🪚 Marcenaria":
+    st.header("🪚 Divisão de Marcenaria")
+    aba_conv, aba_cores = st.tabs(["📋 Conversor CSV", "🛠️ Gerenciar Cores"])
 
-    with aba_csv:
+    with aba_conv:
         try:
             df_cores_gs = conn.read(worksheet="CORES_MARCENARIA", ttl=5)
             m_cores = {norm(r["descricao"]): str(r["codigo"]).split('.')[0].strip() for _, r in df_cores_gs.iterrows()}
         except:
             m_cores = {}
 
-        up_csv = st.file_uploader("Upload CSV", type="csv")
+        up_csv = st.file_uploader("Upload CSV da Marcenaria", type="csv")
         if up_csv:
             df_b = pd.read_csv(up_csv, sep=None, engine='python', dtype=str)
             nome_f = up_csv.name.replace(".csv", "").upper()
@@ -105,7 +104,7 @@ if opcao == "🪵 Marcenaria (CSV)":
             else:
                 tit = nome_f; df = df_b.copy()
 
-            if st.button("🚀 Gerar Excel"):
+            if st.button("🚀 Gerar Excel de Produção"):
                 df.columns = [norm(c) for c in df.columns]
                 pesos = df.apply(lambda r: calcular_pesos_madeira(r.get("LARG",0), r.get("COMP",0), r.get("QUANT",0), r["MATERIAL"]), axis=1)
                 df["PESO_UNIT"] = pesos.apply(lambda x: x[0])
@@ -153,63 +152,65 @@ if opcao == "🪵 Marcenaria (CSV)":
                     for col_idx in range(1, 13):
                         ws.column_dimensions[get_column_letter(col_idx)].width = 18
 
-                st.download_button("📥 Baixar Excel", output.getvalue(), f"PROD_{nome_f}.xlsx")
+                st.download_button("📥 Baixar Excel Marcenaria", output.getvalue(), f"PROD_{nome_f}.xlsx")
 
     with aba_cores:
-        st.subheader("🛠️ Gestão de Cores")
-        try:
-            df_v = conn.read(worksheet="CORES_MARCENARIA", ttl=0)
-            st.dataframe(df_v, use_container_width=True)
-            st.markdown(f'<a href="https://docs.google.com/spreadsheets/d/{st.secrets["connections"]["gsheets"]["spreadsheet"]}/edit" target="_blank"><button style="background-color: #217346; color: white; padding: 10px; width: 100%; border: none; border-radius: 5px;">📝 Abrir Planilha Google</button></a>', unsafe_allow_html=True)
-        except:
-            st.warning("Verifique a aba CORES_MARCENARIA.")
+        st.subheader("🛠️ Editor Direto de Cores")
+        st.write("Edite as informações abaixo e clique em salvar para atualizar o Google Sheets.")
+        df_cores_edit = conn.read(worksheet="CORES_MARCENARIA", ttl=0)
+        
+        # TABELA EDITÁVEL
+        novas_cores = st.data_editor(df_cores_edit, num_rows="dynamic", use_container_width=True)
+        
+        if st.button("💾 Salvar Alterações de Cores"):
+            conn.update(worksheet="CORES_MARCENARIA", data=novas_cores)
+            st.success("Tabela de Cores atualizada com sucesso!")
 
 # ==========================================
 # DIVISÃO 2: METALURGIA
 # ==========================================
-elif opcao == "⚙️ Metalurgia (PDF)":
-    st.header("⚙️ Metalurgia")
-    
+elif opcao == "⚙️ Metalurgia":
+    st.header("⚙️ Divisão de Metalurgia")
+    aba_calc, aba_db = st.tabs(["📋 Calculadora PDF", "🛠️ Gerenciar Base"])
+
     if 'db_mapeamento' not in st.session_state:
         try:
             st.session_state.db_mapeamento = conn.read(worksheet="MAPEAMENTO_TIPO", ttl=5)
             st.session_state.db_pesos_metro = conn.read(worksheet="PESO_POR_METRO", ttl=5)
             st.session_state.db_pesos_conjunto = conn.read(worksheet="PESO_CONJUNTO", ttl=5)
         except:
-            st.error("Erro nas tabelas de Metalurgia.")
-
-    def calcular_metal(df_input):
-        map_rules = st.session_state.db_mapeamento.to_dict('records')
-        dict_metro = dict(zip(st.session_state.db_pesos_metro['secao'], st.session_state.db_pesos_metro['peso_kg_m']))
-        dict_conjunto = dict(zip(st.session_state.db_pesos_conjunto['nome_conjunto'], st.session_state.db_pesos_conjunto['peso_unit_kg']))
-        resultados = []
-        for _, row in df_input.iterrows():
-            desc = str(row['DESCRIÇÃO']); qtd = float(row['QTD']) if row['QTD'] else 0.0
-            tipo_final = "DESCONHECIDO"
-            for regra in map_rules:
-                if str(regra['texto_contido']).upper() in desc.upper():
-                    tipo_final = regra['tipo']; break
-            
-            medida_mm = 0.0
-            try: medida_mm = float(str(row['MEDIDA']).lower().replace('mm','').strip())
-            except: pass
-
-            peso_unit = 0.0
-            if tipo_final == 'CONJUNTO':
-                for nome, p in dict_conjunto.items():
-                    if nome.upper() in desc.upper(): peso_unit = p; break
-            elif 'tubo' in tipo_final.lower():
-                secao = tipo_final.lower().replace('tubo ', '').strip()
-                peso_m = dict_metro.get(secao, 0.0)
-                peso_unit = (medida_mm/1000) * peso_m
-            
-            resultados.append({"QTD": qtd, "DESCRIÇÃO": desc, "MEDIDA": row['MEDIDA'], "TIPO": tipo_final, "PESO_TOTAL": round(peso_unit * qtd, 3)})
-        return pd.DataFrame(resultados)
-
-    aba_calc, aba_db = st.tabs(["📋 Calculadora", "🛠️ Base de Dados"])
+            st.error("Erro ao conectar com as tabelas de Metalurgia.")
 
     with aba_calc:
-        up_pdf = st.file_uploader("Upload PDF", type="pdf")
+        def calcular_metal(df_input):
+            map_rules = st.session_state.db_mapeamento.to_dict('records')
+            dict_metro = dict(zip(st.session_state.db_pesos_metro['secao'], st.session_state.db_pesos_metro['peso_kg_m']))
+            dict_conjunto = dict(zip(st.session_state.db_pesos_conjunto['nome_conjunto'], st.session_state.db_pesos_conjunto['peso_unit_kg']))
+            resultados = []
+            for _, row in df_input.iterrows():
+                desc = str(row['DESCRIÇÃO']); qtd = float(row['QTD']) if row['QTD'] else 0.0
+                tipo_final = "DESCONHECIDO"
+                for regra in map_rules:
+                    if str(regra['texto_contido']).upper() in desc.upper():
+                        tipo_final = regra['tipo']; break
+                
+                medida_mm = 0.0
+                try: medida_mm = float(str(row['MEDIDA']).lower().replace('mm','').strip())
+                except: pass
+
+                peso_unit = 0.0
+                if tipo_final == 'CONJUNTO':
+                    for nome, p in dict_conjunto.items():
+                        if nome.upper() in desc.upper(): peso_unit = p; break
+                elif 'tubo' in tipo_final.lower():
+                    secao = tipo_final.lower().replace('tubo ', '').strip()
+                    peso_m = dict_metro.get(secao, 0.0)
+                    peso_unit = (medida_mm/1000) * peso_m
+                
+                resultados.append({"QTD": qtd, "DESCRIÇÃO": desc, "MEDIDA": row['MEDIDA'], "TIPO": tipo_final, "PESO_TOTAL": round(peso_unit * qtd, 3)})
+            return pd.DataFrame(resultados)
+
+        up_pdf = st.file_uploader("Upload Relatório PDF", type="pdf")
         if up_pdf:
             itens = []
             with pdfplumber.open(up_pdf) as pdf:
@@ -221,15 +222,21 @@ elif opcao == "⚙️ Metalurgia (PDF)":
                                 itens.append({"QTD": row[0], "DESCRIÇÃO": row[1], "MEDIDA": row[3], "COR": row[2]})
             
             df_edit = st.data_editor(pd.DataFrame(itens), num_rows="dynamic", use_container_width=True)
-            if st.button("🚀 Calcular"):
+            if st.button("🚀 Calcular Pesos Metálicos"):
                 res_met = calcular_metal(df_edit)
-                st.metric("Total", f"{res_met['PESO_TOTAL'].sum():.2f} kg")
+                st.metric("Peso Total Estimado", f"{res_met['PESO_TOTAL'].sum():.2f} kg")
                 st.dataframe(res_met, use_container_width=True)
 
     with aba_db:
-        st.info("Arquivo: base_metalurgia")
-        st.markdown(f'<a href="https://docs.google.com/spreadsheets/d/{st.secrets["connections"]["gsheets"]["spreadsheet"]}/edit" target="_blank"><button style="background-color: #217346; color: white; padding: 10px; width: 100%; border: none; border-radius: 5px;">📂 Abrir Planilha Metalurgia</button></a>', unsafe_allow_html=True)
+        st.subheader("🛠️ Editor de Regras (Metalurgia)")
+        df_map_edit = conn.read(worksheet="MAPEAMENTO_TIPO", ttl=0)
+        
+        novo_mapeamento = st.data_editor(df_map_edit, num_rows="dynamic", use_container_width=True)
+        
+        if st.button("💾 Salvar Regras de Metalurgia"):
+            conn.update(worksheet="MAPEAMENTO_TIPO", data=novo_mapeamento)
+            st.success("Regras de mapeamento atualizadas!")
 
 elif opcao == "🏠 Início":
-    st.title("Tecama Hub")
-    st.info("Selecione Marcenaria ou Metalurgia no menu lateral.")
+    st.title("🏗️ Tecama Hub Industrial")
+    st.info("Utilize o menu lateral para acessar a Marcenaria (Ícone de Serrote) ou a Metalurgia (Ícone de Engrenagem).")
