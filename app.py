@@ -17,22 +17,17 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- 2. CSS PERSONALIZADO (VISUAL MODERNO E FONTE MAIOR) ---
+# --- 2. CSS PARA VISUAL MODERNO ---
 st.markdown("""
     <style>
-    /* Aumentar o texto da barra lateral */
     [data-testid="stSidebar"] .stRadio div[role="radiogroup"] label {
         font-size: 22px !important;
         font-weight: 600 !important;
         padding: 10px 0px !important;
         color: #333 !important;
     }
-    
-    /* Estilo dos títulos e textos */
     h1 { color: #FF5722 !important; font-family: 'Segoe UI', sans-serif; }
     h3 { color: #444 !important; }
-    
-    /* Botões Grandes e Independentes (Metalurgia) */
     .stButton > button {
         background-color: #FF5722;
         color: white;
@@ -45,12 +40,6 @@ st.markdown("""
         border: none;
     }
     .stButton > button:hover { background-color: #E64A19; transform: translateY(-2px); }
-    
-    /* Ajuste do Logo na Sidebar */
-    [data-testid="stSidebar"] [data-testid="stImage"] {
-        padding-top: 20px;
-        margin-bottom: -20px;
-    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -91,39 +80,22 @@ with st.sidebar:
         st.markdown("<h2 style='text-align: center; color: #FF5722;'>TECAMA</h2>", unsafe_allow_html=True)
     
     st.markdown("<br>", unsafe_allow_html=True)
-    # Lista de navegação com texto maior via CSS
     opcao = st.radio("NAVEGAÇÃO", ["🏠 Início", "🌲 Marcenaria", "⚙️ Metalurgia"])
     st.markdown("---")
-    st.caption("Tecama Hub Industrial v6.4")
+    st.caption("Tecama Hub Industrial v6.5")
 
 # ==========================================
 # PÁGINA: INÍCIO
 # ==========================================
 if opcao == "🏠 Início":
     st.title("Tecama Hub Industrial")
-    
     st.markdown("### Bem-vindo ao Sistema Unificado de Produção")
-    st.write("Esta plataforma foi desenvolvida para centralizar as operações das divisões de **Marcenaria** e **Metalurgia**, garantindo agilidade no processamento de pedidos e precisão nos cálculos de engenharia.")
-    
+    st.write("Esta plataforma centraliza as operações das divisões de **Marcenaria** e **Metalurgia**.")
     st.markdown("---")
-    
-    # Seção Marcenaria
     st.subheader("🌲 Divisão de Marcenaria")
-    st.markdown("""
-    A página de Marcenaria é focada no **processamento de arquivos CSV gerados pelo Pontta**.
-    * **Conversor:** Transforma listas brutas em planilhas de produção limpas, com nomes de materiais padronizados e cálculo automático de pesos.
-    * **Gestão de Cores:** Permite editar em tempo real a tabela de códigos de cores, garantindo que o PDF de produção saia com as cores corretas da fábrica.
-    """)
-    
-    # Seção Metalurgia
+    st.write("Processamento de arquivos CSV gerados pelo **Pontta**.")
     st.subheader("⚙️ Divisão de Metalurgia")
-    st.markdown("""
-    A página de Metalurgia **automatiza o levantamento de peso de estruturas metálicas através do relatório de metalurgia em PDF gerado pelo Pontta**.
-    * **Calculadora:** Extrai tabelas de relatórios técnicos e aplica cálculos de peso baseados na seção dos tubos e pesos de conjuntos cadastrados.
-    * **Gestão de Tabelas:** Controle total sobre os pesos por metro, conjuntos e regras de mapeamento de texto.
-    """)
-    
-    st.markdown("---")
+    st.write("Automatiza o levantamento de peso de estruturas metálicas através do relatório PDF gerado pelo **Pontta**.")
     st.info("Selecione uma divisão no menu lateral para começar.")
 
 # ==========================================
@@ -137,14 +109,12 @@ elif opcao == "🌲 Marcenaria":
         try:
             df_cores_gs = conn.read(worksheet="CORES_MARCENARIA", ttl=5)
             m_cores = {norm(r["descricao"]): str(r["codigo"]).split('.')[0].strip() for _, r in df_cores_gs.iterrows()}
-        except:
-            m_cores = {}
+        except: m_cores = {}
 
         up_csv = st.file_uploader("Suba o arquivo CSV (Pontta)", type="csv")
         if up_csv:
             df_b = pd.read_csv(up_csv, sep=None, engine='python', dtype=str)
             nome_f = up_csv.name.replace(".csv", "").upper()
-            
             l_teste = pd.to_numeric(df_b.iloc[0].get('LARG', ''), errors='coerce')
             if pd.isna(l_teste):
                 info_l = " - ".join([str(v) for v in df_b.iloc[0].dropna() if str(v).strip() != ""])
@@ -157,10 +127,7 @@ elif opcao == "🌲 Marcenaria":
                 df.columns = [norm(c) for c in df.columns]
                 pesos = df.apply(lambda r: calcular_pesos_madeira(r.get("LARG",0), r.get("COMP",0), r.get("QUANT",0), r["MATERIAL"]), axis=1)
                 df["PESO_UNIT"] = pesos.apply(lambda x: x[0]); df["PESO_TOTAL"] = pesos.apply(lambda x: x[1])
-                
-                if "COR" in df.columns: 
-                    df["COR"] = df["COR"].apply(lambda x: m_cores.get(norm(x), str(x).split('.')[0]))
-                
+                if "COR" in df.columns: df["COR"] = df["COR"].apply(lambda x: m_cores.get(norm(x), str(x).split('.')[0]))
                 df["MATERIAL"] = df["MATERIAL"].apply(limpa_material)
                 for c in ["CORTE", "FITA", "USINAGEM"]: df[c] = ""
                 if "DES_PAI" in df.columns: df = df.sort_values(by="DES_PAI")
@@ -170,38 +137,28 @@ elif opcao == "🌲 Marcenaria":
                     ws = writer.book.create_sheet("PRODUCAO")
                     ws.cell(row=1, column=1, value=f"TECAMA | PEDIDO: {tit}").font = Font(bold=True, size=14, color="FF5722")
                     ws.merge_cells(start_row=1, end_row=1, start_column=1, end_column=12)
-                    
                     header = ["QUANT","COMP","LARG","MATERIAL","COR (COD)","DESCPECA","PRODUTO","CORTE","FITA","USINAGEM","PESO UNIT.","PESO TOTAL"]
                     for i, h in enumerate(header, 1):
-                        cell = ws.cell(row=3, column=i, value=h)
-                        cell.font = Font(bold=True); cell.alignment = Alignment(horizontal="center")
-                    
+                        cell = ws.cell(row=3, column=i, value=h); cell.font = Font(bold=True); cell.alignment = Alignment(horizontal="center")
                     curr = 4; soma = 0.0
-                    col_ordem = ["QUANT","COMP","LARG","MATERIAL","COR","DESCPECA","DES_PAI","CORTE","FITA","USINAGEM","PES_UNIT","PESO_TOTAL"]
-                    # Correção: O código deve usar os nomes exatos das colunas calculadas
-                    col_map = {"PES_UNIT": "PESO_UNIT", "PESO_TOTAL": "PESO_TOTAL"}
-                    
+                    col_ordem = ["QUANT","COMP","LARG","MATERIAL","COR","DESCPECA","DES_PAI","CORTE","FITA","USINAGEM","PESO_UNIT","PESO_TOTAL"]
                     for dp, g in df.groupby("DES_PAI", sort=False):
                         ini = curr
                         for _, r in g.iterrows():
                             for i, c_nome in enumerate(col_ordem, 1):
-                                val = r.get(col_map.get(c_nome, c_nome), "")
-                                ws.cell(row=curr, column=i, value=val)
+                                ws.cell(row=curr, column=i, value=r.get(c_nome, ""))
                             soma += float(r.get("PESO_TOTAL", 0)); curr += 1
                         if len(g) > 1:
                             ws.merge_cells(start_row=ini, end_row=curr-1, start_column=7, end_column=7)
                             ws.cell(row=ini, column=7).alignment = Alignment(vertical="center", horizontal="center")
                         curr += 1
-                    
                     ws.cell(row=curr+1, column=11, value="TOTAL:").font = Font(bold=True)
                     ws.cell(row=curr+1, column=12, value=f"{round(soma, 2)} kg").font = Font(bold=True)
-                    
                     borda = Border(left=Side(style="thin"), right=Side(style="thin"), top=Side(style="thin"), bottom=Side(style="thin"))
                     for row in ws.iter_rows(min_row=3, max_row=curr-1):
                         if any(cell.value for cell in row):
                             for cell in row: cell.border = borda
                     for col_idx in range(1, 13): ws.column_dimensions[get_column_letter(col_idx)].width = 18
-
                 st.download_button("📥 Baixar Planilha Marcenaria", output.getvalue(), f"PROD_{nome_f}.xlsx")
 
     with aba_cores:
@@ -210,7 +167,7 @@ elif opcao == "🌲 Marcenaria":
         nova_tabela_cores = st.data_editor(df_cores_edit, num_rows="dynamic", use_container_width=True)
         if st.button("💾 Salvar Alterações de Cores"):
             conn.update(worksheet="CORES_MARCENARIA", data=nova_tabela_cores)
-            st.success("Tabela de Cores atualizada no Google Sheets!")
+            st.success("Cores salvas!")
 
 # ==========================================
 # PÁGINA: METALURGIA
@@ -224,28 +181,58 @@ elif opcao == "⚙️ Metalurgia":
             st.session_state.db_mapeamento = conn.read(worksheet="MAPEAMENTO_TIPO", ttl=5)
             st.session_state.db_pesos_metro = conn.read(worksheet="PESO_POR_METRO", ttl=5)
             st.session_state.db_pesos_conjunto = conn.read(worksheet="PESO_CONJUNTO", ttl=5)
-        except:
-            st.error("Erro na conexão com o Banco de Dados.")
+        except: st.error("Erro no Banco de Dados.")
 
     with aba_calc:
-        up_pdf = st.file_uploader("Suba o Relatório de Metalurgia (PDF)", type="pdf")
+        def calcular_metal(df_input):
+            map_rules = st.session_state.db_mapeamento.to_dict('records')
+            dict_metro = dict(zip(st.session_state.db_pesos_metro['secao'], st.session_state.db_pesos_metro['peso_kg_m']))
+            dict_conjunto = dict(zip(st.session_state.db_pesos_conjunto['nome_conjunto'], st.session_state.db_pesos_conjunto['peso_unit_kg']))
+            res = []
+            for _, r in df_input.iterrows():
+                desc = str(r['DESCRIÇÃO']); qtd = float(r['QTD']) if r['QTD'] else 0.0
+                tipo = "DESCONHECIDO"
+                for regra in map_rules:
+                    if str(regra['texto_contido']).upper() in desc.upper(): tipo = regra['tipo']; break
+                medida = 0.0
+                try: medida = float(str(r['MEDIDA']).lower().replace('mm','').strip())
+                except: pass
+                p_unit = 0.0
+                if tipo == 'CONJUNTO':
+                    for n, p in dict_conjunto.items():
+                        if n.upper() in desc.upper(): p_unit = p; break
+                elif 'tubo' in tipo.lower():
+                    sec = tipo.lower().replace('tubo ', '').strip()
+                    p_unit = (medida/1000) * dict_metro.get(sec, 0.0)
+                res.append({"QTD": qtd, "DESCRIÇÃO": desc, "MEDIDA": r['MEDIDA'], "TIPO": tipo, "PESO_TOTAL": round(p_unit * qtd, 3)})
+            return pd.DataFrame(res)
+
+        up_pdf = st.file_uploader("Suba o Relatório PDF", type="pdf")
         if up_pdf:
-            st.info("Extraindo dados do relatório Pontta...")
-            # Lógica de cálculo PDF aqui...
+            itens = []
+            with pdfplumber.open(up_pdf) as pdf:
+                for page in pdf.pages:
+                    tables = page.extract_tables()
+                    for table in tables:
+                        for r in table:
+                            if len(r) > 3 and str(r[0]).strip().replace('.','').isdigit():
+                                itens.append({"QTD": r[0], "DESCRIÇÃO": r[1], "MEDIDA": r[3], "COR": r[2]})
+            
+            df_edit = st.data_editor(pd.DataFrame(itens), num_rows="dynamic", use_container_width=True)
+            if st.button("🚀 Calcular Pesos"):
+                res_met = calcular_metal(df_edit)
+                st.metric("Total", f"{res_met['PESO_TOTAL'].sum():.2f} kg")
+                st.dataframe(res_met, use_container_width=True)
 
     with aba_db:
-        st.subheader("🛠️ Gestão de Tabelas")
-        if 'tab_met' not in st.session_state: st.session_state.tab_met = "MAPEAMENTO_TIPO"
-        
+        if 'tab_m' not in st.session_state: st.session_state.tab_m = "MAPEAMENTO_TIPO"
         c1, c2, c3 = st.columns(3)
-        if c1.button("📋 Mapeamento de Peças"): st.session_state.tab_met = "MAPEAMENTO_TIPO"
-        if c2.button("⚖️ Pesos de Tubos (m)"): st.session_state.tab_met = "PESO_POR_METRO"
-        if c3.button("📦 Pesos de Conjuntos"): st.session_state.tab_met = "PESO_CONJUNTO"
+        if c1.button("📋 Regras"): st.session_state.tab_m = "MAPEAMENTO_TIPO"
+        if c2.button("⚖️ Tubos"): st.session_state.tab_m = "PESO_POR_METRO"
+        if c3.button("📦 Conjuntos"): st.session_state.tab_m = "PESO_CONJUNTO"
         
-        st.markdown(f"#### Editando: **{st.session_state.tab_met}**")
-        df_m = conn.read(worksheet=st.session_state.tab_met, ttl=0)
-        dados_novos_m = st.data_editor(df_m, num_rows="dynamic", use_container_width=True)
-        
-        if st.button(f"💾 Salvar alterações em {st.session_state.tab_met}"):
-            conn.update(worksheet=st.session_state.tab_met, data=dados_novos_m)
-            st.success(f"Tabela {st.session_state.tab_met} salva!")
+        df_m = conn.read(worksheet=st.session_state.tab_m, ttl=0)
+        dados_novos = st.data_editor(df_m, num_rows="dynamic", use_container_width=True)
+        if st.button(f"💾 Salvar {st.session_state.tab_m}"):
+            conn.update(worksheet=st.session_state.tab_m, data=dados_novos)
+            st.success("Salvo!")
