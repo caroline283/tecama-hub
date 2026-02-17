@@ -17,7 +17,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- 2. CSS PARA VISUAL MODERNO ---
+# --- 2. CSS PARA VISUAL MODERNO (FONTE GRANDE) ---
 st.markdown("""
     <style>
     [data-testid="stSidebar"] .stRadio div[role="radiogroup"] label {
@@ -28,13 +28,14 @@ st.markdown("""
     }
     h1 { color: #FF5722 !important; font-family: 'Segoe UI', sans-serif; }
     h3 { color: #444 !important; }
+    h4 { color: #FF5722 !important; }
     .stButton > button {
         background-color: #FF5722;
         color: white;
         width: 100%;
         border-radius: 12px;
         font-weight: bold;
-        height: 4em;
+        height: 3.5em;
         font-size: 16px;
         box-shadow: 0 4px 8px rgba(0,0,0,0.1);
         border: none;
@@ -82,20 +83,31 @@ with st.sidebar:
     st.markdown("<br>", unsafe_allow_html=True)
     opcao = st.radio("NAVEGAÇÃO", ["🏠 Início", "🌲 Marcenaria", "⚙️ Metalurgia"])
     st.markdown("---")
-    st.caption("Tecama Hub Industrial v6.5")
+    st.caption("Tecama Hub Industrial v6.6")
 
 # ==========================================
-# PÁGINA: INÍCIO
+# PÁGINA: INÍCIO (TEXTOS RESTAURADOS)
 # ==========================================
 if opcao == "🏠 Início":
     st.title("Tecama Hub Industrial")
     st.markdown("### Bem-vindo ao Sistema Unificado de Produção")
-    st.write("Esta plataforma centraliza as operações das divisões de **Marcenaria** e **Metalurgia**.")
+    st.write("Esta plataforma foi desenvolvida para centralizar as operações das divisões de **Marcenaria** e **Metalurgia**, garantindo agilidade no processamento de pedidos e precisão nos cálculos de engenharia.")
     st.markdown("---")
+    
     st.subheader("🌲 Divisão de Marcenaria")
-    st.write("Processamento de arquivos CSV gerados pelo **Pontta**.")
+    st.markdown("""
+    A página de Marcenaria é focada no **processamento de arquivos CSV gerados pelo Pontta**.
+    * **Conversor:** Transforma listas brutas em planilhas de produção limpas, com nomes de materiais padronizados e cálculo automático de pesos.
+    * **Gestão de Cores:** Permite editar em tempo real a tabela de códigos de cores, garantindo que o PDF de produção saia com as cores corretas da fábrica.
+    """)
+    
     st.subheader("⚙️ Divisão de Metalurgia")
-    st.write("Automatiza o levantamento de peso de estruturas metálicas através do relatório PDF gerado pelo **Pontta**.")
+    st.markdown("""
+    A página de Metalurgia **automatiza o levantamento de peso de estruturas metálicas através do relatório de metalurgia em PDF gerado pelo Pontta**.
+    * **Calculadora:** Extrai tabelas de relatórios técnicos e aplica cálculos de peso baseados na seção dos tubos e pesos de conjuntos cadastrados.
+    * **Gestão de Tabelas:** Controle total sobre os pesos por metro, conjuntos e regras de mapeamento de texto.
+    """)
+    st.markdown("---")
     st.info("Selecione uma divisão no menu lateral para começar.")
 
 # ==========================================
@@ -219,20 +231,32 @@ elif opcao == "⚙️ Metalurgia":
                                 itens.append({"QTD": r[0], "DESCRIÇÃO": r[1], "MEDIDA": r[3], "COR": r[2]})
             
             df_edit = st.data_editor(pd.DataFrame(itens), num_rows="dynamic", use_container_width=True)
-            if st.button("🚀 Calcular Pesos"):
+            if st.button("🚀 Calcular Pesos e Gerar Relatório"):
                 res_met = calcular_metal(df_edit)
-                st.metric("Total", f"{res_met['PESO_TOTAL'].sum():.2f} kg")
+                st.metric("Peso Total Estimado", f"{res_met['PESO_TOTAL'].sum():.2f} kg")
                 st.dataframe(res_met, use_container_width=True)
+                
+                # --- BOTÃO DE EXPORTAR METALURGIA ---
+                output_met = io.BytesIO()
+                with pd.ExcelWriter(output_met, engine="openpyxl") as writer:
+                    res_met.to_excel(writer, index=False, sheet_name="METALURGIA")
+                st.download_button(
+                    label="📥 Baixar Planilha de Metalurgia",
+                    data=output_met.getvalue(),
+                    file_name=f"METAL_{up_pdf.name.replace('.pdf', '')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
 
     with aba_db:
         if 'tab_m' not in st.session_state: st.session_state.tab_m = "MAPEAMENTO_TIPO"
         c1, c2, c3 = st.columns(3)
-        if c1.button("📋 Regras"): st.session_state.tab_m = "MAPEAMENTO_TIPO"
-        if c2.button("⚖️ Tubos"): st.session_state.tab_m = "PESO_POR_METRO"
-        if c3.button("📦 Conjuntos"): st.session_state.tab_m = "PESO_CONJUNTO"
+        if c1.button("📋 Regras de Mapeamento"): st.session_state.tab_m = "MAPEAMENTO_TIPO"
+        if c2.button("⚖️ Pesos de Tubos (m)"): st.session_state.tab_m = "PESO_POR_METRO"
+        if c3.button("📦 Pesos de Conjuntos"): st.session_state.tab_m = "PESO_CONJUNTO"
         
+        st.markdown(f"#### Editando: **{st.session_state.tab_m}**")
         df_m = conn.read(worksheet=st.session_state.tab_m, ttl=0)
         dados_novos = st.data_editor(df_m, num_rows="dynamic", use_container_width=True)
-        if st.button(f"💾 Salvar {st.session_state.tab_m}"):
+        if st.button(f"💾 Salvar alterações em {st.session_state.tab_m}"):
             conn.update(worksheet=st.session_state.tab_m, data=dados_novos)
-            st.success("Salvo!")
+            st.success("Salvo com sucesso!")
