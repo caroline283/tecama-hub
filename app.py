@@ -73,34 +73,51 @@ with st.sidebar:
     opcao = st.radio("NAVEGAÇÃO", ["🏠 Início", "🌲 Marcenaria", "⚙️ Metalurgia"], 
                      index=["🏠 Início", "🌲 Marcenaria", "⚙️ Metalurgia"].index(st.session_state.nav))
     st.session_state.nav = opcao
-    st.caption("Tecama Hub Industrial v8.1")
+    st.caption("Tecama Hub Industrial v8.3")
 
 # ==========================================
-# PÁGINA: INÍCIO
+# PÁGINA: INÍCIO (TEXTO v6.6 INTEGRAL)
 # ==========================================
 if st.session_state.nav == "🏠 Início":
     st.title("Tecama Hub Industrial")
     st.markdown("### Bem-vindo ao Sistema Unificado de Produção")
-    st.write("Esta plataforma foi desenvolvida para centralizar as operações das divisões integradas ao sistema **Pontta**.")
+    st.write("Esta plataforma foi desenvolvida para centralizar as operações das divisões de **Marcenaria** e **Metalurgia**, garantindo agilidade no processamento de pedidos e precisão nos cálculos de engenharia.")
     st.markdown("---")
+    
     st.markdown('<div class="home-link">', unsafe_allow_html=True)
     if st.button("🌲 Divisão de Marcenaria"):
-        st.session_state.nav = "🌲 Marcenaria"; st.rerun()
+        st.session_state.nav = "🌲 Marcenaria"
+        st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
-    st.write("Processamento de arquivos CSV (Pontta) com cálculo automático de pesos.")
+    
+    st.markdown("""
+    A página de Marcenaria é focada no **processamento de arquivos CSV gerados pelo Pontta**.
+    * **Conversor:** Transforma listas brutas em planilhas de produção limpas, com nomes de materiais padronizados e cálculo automático de pesos.
+    * **Gestão de Cores:** Permite editar em tempo real a tabela de códigos de cores, garantindo que o PDF de produção saia com as cores corretas da fábrica.
+    """)
+    
     st.markdown("<br>", unsafe_allow_html=True)
+    
     st.markdown('<div class="home-link">', unsafe_allow_html=True)
     if st.button("⚙️ Divisão de Metalurgia"):
-        st.session_state.nav = "⚙️ Metalurgia"; st.rerun()
+        st.session_state.nav = "⚙️ Metalurgia"
+        st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
-    st.write("Levantamento automático de peso através do relatório PDF (Pontta).")
+    
+    st.markdown("""
+    A página de Metalurgia **automatiza o levantamento de peso de estruturas metálicas através do relatório de metalurgia em PDF gerado pelo Pontta**.
+    * **Calculadora:** Extrai tabelas de relatórios técnicos e aplica cálculos de peso baseados na seção dos tubos e pesos de conjuntos cadastrados.
+    * **Gestão de Tabelas:** Controle total sobre os pesos por metro, conjuntos e regras de mapeamento de texto.
+    """)
+    st.markdown("---")
+    st.info("Selecione uma divisão no menu lateral para começar.")
 
 # ==========================================
 # PÁGINA: MARCENARIA
 # ==========================================
 elif st.session_state.nav == "🌲 Marcenaria":
-    st.header("🌲 Marcenaria")
-    aba_conv, aba_cores = st.tabs(["📋 Processar Pedido", "🎨 Cores"])
+    st.header("🌲 Operações de Marcenaria")
+    aba_conv, aba_cores = st.tabs(["📋 Processar Pedido (CSV)", "🎨 Editar Tabela de Cores"])
     with aba_conv:
         try:
             df_cores_gs = conn.read(worksheet="CORES_MARCENARIA", ttl=5)
@@ -112,7 +129,7 @@ elif st.session_state.nav == "🌲 Marcenaria":
             nome_f = up_csv.name.replace(".csv", "").upper()
             l_teste = pd.to_numeric(df_b.iloc[0].get('LARG', ''), errors='coerce')
             df = df_b.iloc[1:].copy() if pd.isna(l_teste) else df_b.copy()
-            if st.button("🚀 Gerar Planilha"):
+            if st.button("🚀 Gerar Planilha de Produção"):
                 df.columns = [norm(c) for c in df.columns]
                 pesos = df.apply(lambda r: calcular_pesos_madeira(r.get("LARG",0), r.get("COMP",0), r.get("QUANT",0), r["MATERIAL"]), axis=1)
                 df["PESO_UNIT"] = pesos.apply(lambda x: x[0]); df["PESO_TOTAL"] = pesos.apply(lambda x: x[1])
@@ -123,7 +140,6 @@ elif st.session_state.nav == "🌲 Marcenaria":
                 with pd.ExcelWriter(output, engine="openpyxl") as writer:
                     ws = writer.book.create_sheet("PRODUCAO")
                     ws.cell(row=1, column=1, value=f"TECAMA | PEDIDO: {nome_f}").font = Font(bold=True)
-                    ws.merge_cells(start_row=1, end_row=1, start_column=1, end_column=12)
                     header = ["QUANT","COMP","LARG","MATERIAL","COR (COD)","DESCPECA","PRODUTO","CORTE","FITA","USINAGEM","PESO UNIT.","PESO TOTAL"]
                     for i, h in enumerate(header, 1):
                         cell = ws.cell(row=3, column=i, value=h); cell.font = Font(bold=True); cell.alignment = Alignment(horizontal="center")
@@ -137,25 +153,22 @@ elif st.session_state.nav == "🌲 Marcenaria":
                             soma += float(r.get("PESO_TOTAL", 0)); curr += 1
                         if len(g) > 1: ws.merge_cells(start_row=ini, end_row=curr-1, start_column=7, end_column=7)
                         curr += 1
-                    ws.cell(row=curr+1, column=11, value="TOTAL:").font = Font(bold=True)
-                    ws.cell(row=curr+1, column=12, value=f"{round(soma, 2)} kg").font = Font(bold=True)
                     for i in range(1, 13):
-                        letra = get_column_letter(i)
-                        ws.column_dimensions[letra].width = 35 if letra == 'G' else 18
-                st.download_button("📥 Baixar Planilha", output.getvalue(), f"PROD_{nome_f}.xlsx")
+                        ws.column_dimensions[get_column_letter(i)].width = 35 if i == 7 else 18
+                st.download_button("📥 Baixar Excel Marcenaria", output.getvalue(), f"PROD_{nome_f}.xlsx")
     with aba_cores:
         df_cores_edit = conn.read(worksheet="CORES_MARCENARIA", ttl=0)
         nova_tabela_cores = st.data_editor(df_cores_edit, num_rows="dynamic", use_container_width=True)
-        if st.button("💾 Salvar Cores"):
-            conn.update(worksheet="CORES_MARCENARIA", data=nova_tabela_cores)
-            st.success("Salvo!")
+        if st.button("💾 Salvar Tabela de Cores"):
+            conn.update(worksheet="CORES_MARCENARIA", data=nova_tabela_cores); st.success("Salvo!")
 
 # ==========================================
 # PÁGINA: METALURGIA
 # ==========================================
 elif st.session_state.nav == "⚙️ Metalurgia":
     st.header("⚙️ Metalurgia")
-    aba_calc, aba_db = st.tabs(["📋 Calculadora", "🛠️ Gerenciar Tabelas"])
+    aba_calc, aba_db = st.tabs(["📋 Calculadora PDF", "🛠️ Gerenciar Tabelas Base"])
+    
     try:
         db_map = conn.read(worksheet="MAPEAMENTO_TIPO", ttl=5)
         db_metro = conn.read(worksheet="PESO_POR_METRO", ttl=5)
@@ -177,7 +190,7 @@ elif st.session_state.nav == "⚙️ Metalurgia":
                             if r and len(r) > 3 and str(r[0]).strip().replace('.','').isdigit():
                                 itens.append({"QTD": r[0], "DESCRIÇÃO": r[1], "MEDIDA": r[3], "COR": r[2]})
             df_editor = st.data_editor(pd.DataFrame(itens), num_rows="dynamic", use_container_width=True)
-            if st.button("🚀 Calcular e Gerar Excel"):
+            if st.button("🚀 Calcular Pesos e Gerar Excel"):
                 res = []
                 for _, r in df_editor.iterrows():
                     desc_limpa = norm(str(r.get('DESCRIÇÃO')))
@@ -206,9 +219,18 @@ elif st.session_state.nav == "⚙️ Metalurgia":
                     ws = writer.sheets["METALURGIA"]
                     for i in range(1, 7): ws.column_dimensions[get_column_letter(i)].width = 25
                 st.download_button("📥 Baixar Excel Metalurgia", output.getvalue(), f"METAL_{up_pdf.name}.xlsx")
+
     with aba_db:
-        sel = st.selectbox("Tabela:", ["MAPEAMENTO_TIPO", "PESO_POR_METRO", "PESO_CONJUNTO"])
-        df_v = conn.read(worksheet=sel, ttl=0)
+        st.subheader("🛠️ Gestão de Tabelas")
+        if 'tab_metal_ativa' not in st.session_state: st.session_state.tab_metal_ativa = "MAPEAMENTO_TIPO"
+        
+        col1, col2, col3 = st.columns(3)
+        if col1.button("📋 Regras de Mapeamento"): st.session_state.tab_metal_ativa = "MAPEAMENTO_TIPO"
+        if col2.button("⚖️ Pesos de Tubos (m)"): st.session_state.tab_metal_ativa = "PESO_POR_METRO"
+        if col3.button("📦 Pesos de Conjuntos"): st.session_state.tab_metal_ativa = "PESO_CONJUNTO"
+        
+        st.markdown(f"--- \n#### Editando: **{st.session_state.tab_metal_ativa}**")
+        df_v = conn.read(worksheet=st.session_state.tab_metal_ativa, ttl=0)
         novo = st.data_editor(df_v, num_rows="dynamic", use_container_width=True)
-        if st.button("💾 Salvar"):
-            conn.update(worksheet=sel, data=novo); st.success("Salvo!")
+        if st.button(f"💾 Salvar Alterações em {st.session_state.tab_metal_ativa}"):
+            conn.update(worksheet=st.session_state.tab_metal_ativa, data=novo); st.success("Salvo com sucesso!")
