@@ -12,41 +12,43 @@ from openpyxl.styles import Alignment, Border, Side, Font
 # --- 1. CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Tecama Hub Industrial", layout="wide", page_icon="🏗️")
 
-# --- 2. CSS PARA VISUAL v6.6 E TÍTULOS-BOTÃO ---
+# --- 2. CSS PERSONALIZADO ---
 st.markdown("""
     <style>
+    /* Fonte do Menu Lateral */
     [data-testid="stSidebar"] .stRadio div[role="radiogroup"] label { font-size: 22px !important; font-weight: 600 !important; color: #333 !important; }
+    
+    /* Títulos Gerais */
     h1 { color: #FF5722 !important; font-family: 'Segoe UI', sans-serif; }
-    h3 { color: #444 !important; }
     
-    /* Estilizando botões para parecerem títulos clicáveis na Home */
+    /* Estilo dos Títulos Clicáveis na Home */
+    .home-link .stButton > button {
+        background-color: transparent !important;
+        color: #FF5722 !important;
+        border: none !important;
+        font-size: 24px !important;
+        font-weight: bold !important;
+        text-align: left !important;
+        padding: 0 !important;
+        height: auto !important;
+        text-decoration: underline !important;
+        box-shadow: none !important;
+    }
+    .home-link .stButton > button:hover { color: #E64A19 !important; text-decoration: none !important; }
+
+    /* Estilo dos Botões Laranja (Operacionais) */
     .stButton > button {
-        background-color: transparent;
-        color: #FF5722;
-        border: none;
-        font-size: 24px;
-        font-weight: bold;
-        text-align: left;
-        padding: 0;
-        height: auto;
-        text-decoration: underline;
-    }
-    .stButton > button:hover {
-        color: #E64A19;
-        background-color: transparent;
-        text-decoration: none;
-    }
-    
-    /* Botões padrão (nas outras páginas) */
-    .main-btn .stButton > button {
         background-color: #FF5722;
         color: white;
+        width: 100%;
         border-radius: 12px;
+        font-weight: bold;
         height: 3.5em;
         font-size: 16px;
-        text-decoration: none;
-        text-align: center;
+        border: none;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
     }
+    .stButton > button:hover { background-color: #E64A19; transform: translateY(-2px); }
     </style>
     """, unsafe_allow_html=True)
 
@@ -86,46 +88,45 @@ with st.sidebar:
     opcao = st.radio("NAVEGAÇÃO", ["🏠 Início", "🌲 Marcenaria", "⚙️ Metalurgia"], 
                      index=["🏠 Início", "🌲 Marcenaria", "⚙️ Metalurgia"].index(st.session_state.nav))
     st.session_state.nav = opcao
-    st.caption("Tecama Hub Industrial v7.1")
+    st.caption("Tecama Hub Industrial v7.2")
 
 # ==========================================
-# PÁGINA: INÍCIO (TÍTULOS SÃO BOTÕES)
+# PÁGINA: INÍCIO (TÍTULOS CLICÁVEIS)
 # ==========================================
 if st.session_state.nav == "🏠 Início":
     st.title("Tecama Hub Industrial")
     st.markdown("### Bem-vindo ao Sistema Unificado de Produção")
-    st.write("Esta plataforma foi desenvolvida para centralizar as operações das divisões de **Marcenaria** e **Metalurgia**, garantindo agilidade no processamento de pedidos e precisão nos cálculos de engenharia.")
+    st.write("Esta plataforma foi desenvolvida para centralizar as operações das divisões integradas ao sistema **Pontta**.")
     st.markdown("---")
     
-    # Divisão de Marcenaria como Botão/Título
+    st.markdown('<div class="home-link">', unsafe_allow_html=True)
     if st.button("🌲 Divisão de Marcenaria"):
         st.session_state.nav = "🌲 Marcenaria"
         st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
     st.markdown("""
     A página de Marcenaria é focada no **processamento de arquivos CSV gerados pelo Pontta**.
-    * **Conversor:** Transforma listas brutas em planilhas de produção limpas, com nomes de materiais padronizados e cálculo automático de pesos.
-    * **Gestão de Cores:** Permite editar em tempo real a tabela de códigos de cores, garantindo que o PDF de produção saia com as cores corretas da fábrica.
+    * **Conversor:** Transforma listas brutas em planilhas de produção limpas com cálculo automático de pesos.
+    * **Gestão de Cores:** Edição em tempo real da tabela de códigos de cores.
     """)
     
     st.markdown("<br>", unsafe_allow_html=True)
     
-    # Divisão de Metalurgia como Botão/Título
+    st.markdown('<div class="home-link">', unsafe_allow_html=True)
     if st.button("⚙️ Divisão de Metalurgia"):
         st.session_state.nav = "⚙️ Metalurgia"
         st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
     st.markdown("""
-    A página de Metalurgia **automatiza o levantamento de peso de estruturas metálicas através do relatório de metalurgia em PDF gerado pelo Pontta**.
-    * **Calculadora:** Extrai tabelas de relatórios técnicos e aplica cálculos de peso baseados na seção dos tubos e pesos de conjuntos cadastrados.
-    * **Gestão de Tabelas:** Controle total sobre os pesos por metro, conjuntos e regras de mapeamento de texto.
+    A página de Metalurgia **automatiza o levantamento de peso através do relatório PDF gerado pelo Pontta**.
+    * **Calculadora:** Extrai tabelas e aplica pesos baseados na seção dos tubos e conjuntos.
+    * **Gestão de Tabelas:** Controle total sobre pesos por metro e regras de mapeamento.
     """)
-    st.markdown("---")
-    st.info("Dica: Clique nos títulos acima ou use o menu lateral para navegar.")
 
 # ==========================================
 # PÁGINA: MARCENARIA
 # ==========================================
 elif st.session_state.nav == "🌲 Marcenaria":
-    st.markdown('<div class="main-btn">', unsafe_allow_html=True)
     st.header("🌲 Operações de Marcenaria")
     aba_conv, aba_cores = st.tabs(["📋 Processar Pedido (CSV)", "🎨 Editar Tabela de Cores"])
 
@@ -180,9 +181,18 @@ elif st.session_state.nav == "🌲 Marcenaria":
                         if any(cell.value for cell in row):
                             for cell in row: cell.border = borda
 
-                    for i, col in enumerate(ws.columns, 1):
-                        letter = get_column_letter(i)
-                        ws.column_dimensions[letter].width = 35 if letter == 'G' else 16
+                    # AutoAjuste Marcenaria
+                    for col in ws.columns:
+                        max_length = 0
+                        column = col[0].column_letter
+                        if column == 'G': # Coluna Produto
+                            ws.column_dimensions[column].width = 35
+                            continue
+                        for cell in col:
+                            try:
+                                if len(str(cell.value)) > max_length: max_length = len(str(cell.value))
+                            except: pass
+                        ws.column_dimensions[column].width = max_length + 4
                             
                 st.download_button("📥 Baixar Planilha Marcenaria", output.getvalue(), f"PROD_{nome_f}.xlsx")
 
@@ -193,15 +203,13 @@ elif st.session_state.nav == "🌲 Marcenaria":
         if st.button("💾 Salvar Cores"):
             conn.update(worksheet="CORES_MARCENARIA", data=nova_tabela_cores)
             st.success("Salvo!")
-    st.markdown('</div>', unsafe_allow_html=True)
 
 # ==========================================
 # PÁGINA: METALURGIA
 # ==========================================
 elif st.session_state.nav == "⚙️ Metalurgia":
-    st.markdown('<div class="main-btn">', unsafe_allow_html=True)
     st.header("⚙️ Metalurgia")
-    aba_calc, aba_db = st.tabs(["📋 Calculadora PDF", "🛠️ Gerenciar Tabelas"])
+    aba_calc, aba_db = st.tabs(["📋 Calculadora PDF (Pontta)", "🛠️ Gerenciar Tabelas Base"])
 
     if 'db_mapeamento' not in st.session_state:
         st.session_state.db_mapeamento = conn.read(worksheet="MAPEAMENTO_TIPO", ttl=5)
@@ -225,7 +233,6 @@ elif st.session_state.nav == "⚙️ Metalurgia":
                 medida = 0.0
                 try: medida = float(str(r['MEDIDA']).lower().replace('mm','').replace(',','.').strip())
                 except: pass
-                
                 p_unit = 0.0
                 if tipo == 'CONJUNTO':
                     for n_conj, p_val in dict_conjunto.items():
@@ -233,7 +240,6 @@ elif st.session_state.nav == "⚙️ Metalurgia":
                 elif 'tubo' in tipo.lower():
                     sec = norm(tipo.lower().replace('tubo ', '').strip())
                     p_unit = (medida/1000) * dict_metro.get(sec, 0.0)
-                
                 res.append({"QTD": qtd, "DESCRIÇÃO": str(r['DESCRIÇÃO']), "MEDIDA": r['MEDIDA'], "TIPO": tipo, "PESO UNIT.": round(p_unit, 3), "PESO TOTAL": round(p_unit * qtd, 3)})
             return pd.DataFrame(res)
 
@@ -251,7 +257,7 @@ elif st.session_state.nav == "⚙️ Metalurgia":
             df_edit = st.data_editor(pd.DataFrame(itens), num_rows="dynamic", use_container_width=True)
             if st.button("🚀 Calcular e Gerar Excel Detalhado"):
                 res_met = calcular_metal(df_edit)
-                st.metric("Peso Total", f"{res_met['PESO TOTAL'].sum():.2f} kg")
+                st.metric("Peso Total Estimado", f"{res_met['PESO TOTAL'].sum():.2f} kg")
                 st.dataframe(res_met, use_container_width=True)
                 
                 output_met = io.BytesIO()
@@ -261,8 +267,13 @@ elif st.session_state.nav == "⚙️ Metalurgia":
                     last_row = len(res_met) + 3
                     ws_met.cell(row=last_row, column=5, value="TOTAL GERAL:").font = Font(bold=True)
                     ws_met.cell(row=last_row, column=6, value=f"{res_met['PESO TOTAL'].sum():.2f} kg").font = Font(bold=True)
+                    # AutoAjuste Metalurgia
                     for col in ws_met.columns:
-                        ws_met.column_dimensions[col[0].column_letter].width = 25
+                        max_len = 0
+                        for cell in col:
+                            try: max_len = max(max_len, len(str(cell.value)))
+                            except: pass
+                        ws_met.column_dimensions[col[0].column_letter].width = max_len + 5
                 st.download_button("📥 Baixar Excel Metalurgia", output_met.getvalue(), f"METAL_{up_pdf.name}.xlsx")
 
     with aba_db:
@@ -276,4 +287,3 @@ elif st.session_state.nav == "⚙️ Metalurgia":
         if st.button(f"💾 Salvar {st.session_state.tab_m}"):
             conn.update(worksheet=st.session_state.tab_m, data=dados_novos)
             st.success("Salvo!")
-    st.markdown('</div>', unsafe_allow_html=True)
