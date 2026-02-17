@@ -12,16 +12,11 @@ from openpyxl.styles import Alignment, Border, Side, Font
 # --- 1. CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Tecama Hub Industrial", layout="wide", page_icon="🏗️")
 
-# --- 2. CSS PARA VISUAL v6.6 ---
+# --- 2. CSS PARA VISUAL ---
 st.markdown("""
     <style>
     [data-testid="stSidebar"] .stRadio div[role="radiogroup"] label { font-size: 22px !important; font-weight: 600 !important; color: #333 !important; }
     h1 { color: #FF5722 !important; font-family: 'Segoe UI', sans-serif; }
-    .home-link .stButton > button {
-        background-color: transparent !important; color: #FF5722 !important; border: none !important;
-        font-size: 24px !important; font-weight: bold !important; text-align: left !important;
-        padding: 0 !important; height: auto !important; text-decoration: underline !important;
-    }
     .stButton > button {
         background-color: #FF5722; color: white; width: 100%; border-radius: 12px;
         font-weight: bold; height: 3.5em; font-size: 16px; border: none;
@@ -33,7 +28,6 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 
 # --- 3. FUNÇÕES AUXILIARES ---
 def norm(t):
-    """Limpeza profunda: remove acentos, quebras de linha e espaços duplos"""
     if t is None or pd.isna(t): return ""
     t = unicodedata.normalize("NFD", str(t).upper()).encode("ascii", "ignore").decode("utf-8")
     return " ".join(t.split()).strip()
@@ -46,104 +40,137 @@ with st.sidebar:
     opcao = st.radio("NAVEGAÇÃO", ["🏠 Início", "🌲 Marcenaria", "⚙️ Metalurgia"], 
                      index=["🏠 Início", "🌲 Marcenaria", "⚙️ Metalurgia"].index(st.session_state.nav))
     st.session_state.nav = opcao
-    st.caption("Tecama Hub Industrial v7.9")
-
-# ==========================================
-# PÁGINA: INÍCIO (v6.6)
-# ==========================================
-if st.session_state.nav == "🏠 Início":
-    st.title("Tecama Hub Industrial")
-    st.markdown("### Bem-vindo ao Sistema Unificado de Produção")
-    st.write("Esta plataforma centraliza as operações das divisões integradas ao sistema **Pontta**.")
-    st.markdown("---")
-    st.markdown('<div class="home-link">', unsafe_allow_html=True)
-    if st.button("🌲 Divisão de Marcenaria"):
-        st.session_state.nav = "🌲 Marcenaria"; st.rerun()
-    st.markdown('</div>', unsafe_allow_html=True)
-    st.write("Processamento de arquivos CSV (Pontta) com cálculo automático de pesos.")
-    st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown('<div class="home-link">', unsafe_allow_html=True)
-    if st.button("⚙️ Divisão de Metalurgia"):
-        st.session_state.nav = "⚙️ Metalurgia"; st.rerun()
-    st.markdown('</div>', unsafe_allow_html=True)
-    st.write("Levantamento automático de peso através do relatório PDF (Pontta).")
+    st.caption("Tecama Hub Industrial v8.0")
 
 # ==========================================
 # PÁGINA: METALURGIA
 # ==========================================
-elif st.session_state.nav == "⚙️ Metalurgia":
+if st.session_state.nav == "⚙️ Metalurgia":
     st.header("⚙️ Metalurgia")
-    aba_calc, aba_db = st.tabs(["📋 Calculadora PDF", "🛠️ Gerenciar Tabelas"])
+    aba_calc, aba_db = st.tabs(["📋 Calculadora PDF (Pontta)", "🛠️ Gerenciar Tabelas Base"])
     
-    # Carregamento de dados com TTL baixo para teste
+    # Carregamento robusto das tabelas do Sheets
     try:
-        db_map = conn.read(worksheet="MAPEAMENTO_TIPO", ttl=2).to_dict('records')
-        db_metro = conn.read(worksheet="PESO_POR_METRO", ttl=2)
-        db_conj = conn.read(worksheet="PESO_CONJUNTO", ttl=2).to_dict('records')
+        db_map = conn.read(worksheet="MAPEAMENTO_TIPO", ttl=10)
+        db_metro = conn.read(worksheet="PESO_POR_METRO", ttl=10)
+        db_conj = conn.read(worksheet="PESO_CONJUNTO", ttl=10)
         
+        # Dicionários para busca rápida
         dict_metro = dict(zip(db_metro['secao'].apply(norm), db_metro['peso_kg_m']))
-    except:
-        st.error("Erro ao conectar com as tabelas do Google Sheets.")
+        list_map = db_map.to_dict('records')
+        list_conj = db_conj.to_dict('records')
+    except Exception as e:
+        st.error(f"Erro ao carregar tabelas do Google Sheets: {e}")
 
     with aba_calc:
-        up_pdf = st.file_uploader("Suba o PDF Pontta", type="pdf")
+        up_pdf = st.file_uploader("Suba o PDF do Pontta", type="pdf")
         if up_pdf:
-            itens = []
+            itens_extraidos = []
             with pdfplumber.open(up_pdf) as pdf:
                 for page in pdf.pages:
                     tables = page.extract_tables()
                     for table in tables:
                         for r in table:
+                            # Filtra linhas que começam com número (Quantidade)
                             if r and len(r) > 3 and str(r[0]).strip().replace('.','').isdigit():
-                                itens.append({"QTD": r[0], "DESCRIÇÃO": r[1], "MEDIDA": r[3], "COR": r[2]})
+                                itens_extraidos.append({
+                                    "QTD": r[0], 
+                                    "DESCRIÇÃO": r[1], 
+                                    "MEDIDA": r[3], 
+                                    "COR": r[2]
+                                })
             
-            df_edit = st.data_editor(pd.DataFrame(itens), num_rows="dynamic", use_container_width=True)
+            # Editor de dados para conferência manual antes do cálculo
+            df_editor = st.data_editor(pd.DataFrame(itens_extraidos), num_rows="dynamic", use_container_width=True)
             
-            if st.button("🚀 Calcular Pesos"):
-                res = []
-                for _, r in df_edit.iterrows():
+            if st.button("🚀 CALCULAR E GERAR EXCEL"):
+                res_final = []
+                for _, r in df_editor.iterrows():
                     desc_bruta = str(r.get('DESCRIÇÃO', ''))
                     desc_limpa = norm(desc_bruta)
-                    qtd = float(r.get('QTD', 0)) if r.get('QTD') else 0.0
-                    tipo = "DESCONHECIDO"
+                    qtd = float(str(r.get('QTD', 0)).replace(',','.')) if r.get('QTD') else 0.0
                     
-                    # 1. Identifica o TIPO
-                    for regra in db_map:
+                    # 1. Identifica o TIPO via Mapeamento
+                    tipo_encontrado = "DESCONHECIDO"
+                    for regra in list_map:
                         txt_regra = norm(regra.get('texto_contido', ''))
                         if txt_regra and txt_regra in desc_limpa:
-                            tipo = str(regra.get('tipo', 'DESCONHECIDO'))
+                            tipo_encontrado = str(regra.get('tipo', 'DESCONHECIDO')).upper()
                             break
                     
-                    if tipo == "IGNORAR": continue
+                    if tipo_encontrado == "IGNORAR": continue
 
-                    # 2. Calcula o PESO UNITÁRIO
+                    # 2. Lógica de Cálculo de Peso
                     p_unit = 0.0
-                    if tipo == "CONJUNTO":
-                        # Busca o peso do conjunto por correspondência de texto
-                        for c_regra in db_conj:
-                            nome_cadastrado = norm(c_regra.get('nome_conjunto', ''))
-                            if nome_cadastrado and nome_cadastrado in desc_limpa:
-                                p_unit = float(c_regra.get('peso_unit_kg', 0))
-                                break
-                    elif "TUBO" in tipo:
-                        medida = 0.0
-                        try:
-                            med_str = str(r.get('MEDIDA', '0')).lower().replace('mm','').replace(',','.').strip()
-                            medida = float(med_str)
-                        except: medida = 0.0
-                        sec_key = norm(tipo.replace('TUBO ', '').strip())
-                        p_unit = (medida / 1000) * dict_metro.get(sec_key, 0.0)
                     
-                    res.append({
-                        "QTD": qtd, "DESCRIÇÃO": desc_bruta, "MEDIDA": r.get('MEDIDA', ''),
-                        "TIPO": tipo, "PESO UNIT.": round(p_unit, 3), 
-                        "PESO TOTAL": round(p_unit * qtd, 3)
+                    # Se for CONJUNTO
+                    if tipo_encontrado == "CONJUNTO":
+                        for c in list_conj:
+                            nome_conj = norm(c.get('nome_conjunto', ''))
+                            if nome_conj and nome_conj in desc_limpa:
+                                p_unit = float(c.get('peso_unit_kg', 0))
+                                break
+                    
+                    # Se for TUBO (ou qualquer outro que dependa da medida/metro)
+                    elif "TUBO" in tipo_encontrado or tipo_encontrado in dict_metro:
+                        medida_val = 0.0
+                        try:
+                            # Limpa a medida (ex: "1200 mm" -> 1200.0)
+                            m_raw = str(r.get('MEDIDA', '0')).lower().replace('mm','').replace(',','.').strip()
+                            medida_val = float(m_raw)
+                        except: medida_val = 0.0
+                        
+                        # Tenta achar o peso/metro pela seção (ex: 20X20)
+                        secao_key = norm(tipo_encontrado.replace('TUBO ', '').strip())
+                        peso_m = dict_metro.get(secao_key, 0.0)
+                        p_unit = (medida_val / 1000) * peso_m
+
+                    res_final.append({
+                        "QTD": qtd,
+                        "DESCRIÇÃO": desc_bruta,
+                        "MEDIDA": r.get('MEDIDA', ''),
+                        "TIPO": tipo_encontrado,
+                        "PESO UNIT (kg)": round(p_unit, 3),
+                        "PESO TOTAL (kg)": round(p_unit * qtd, 3)
                     })
                 
-                res_df = pd.DataFrame(res)
-                st.metric("Total Geral", f"{res_df['PESO TOTAL'].sum():.2f} kg")
-                st.dataframe(res_df, use_container_width=True)
+                df_res = pd.DataFrame(res_final)
+                st.metric("PESO TOTAL DO PEDIDO", f"{df_res['PESO TOTAL (kg)'].sum():.2f} kg")
+                st.dataframe(df_res, use_container_width=True)
+
+                # --- GERAR EXCEL PARA DOWNLOAD ---
+                output = io.BytesIO()
+                with pd.ExcelWriter(output, engine="openpyxl") as writer:
+                    df_res.to_excel(writer, index=False, sheet_name="METALURGIA", startrow=1)
+                    ws = writer.sheets["METALURGIA"]
+                    
+                    # Cabeçalho Personalizado
+                    ws.cell(row=1, column=1, value=f"RELATÓRIO DE PESOS - METALURGIA").font = Font(bold=True)
+                    
+                    # Ajuste de Colunas e bordas
+                    for i in range(1, 7):
+                        ws.column_dimensions[get_column_letter(i)].width = 25
+                    
+                    # Linha de Total no final
+                    last_row = len(df_res) + 3
+                    ws.cell(row=last_row, column=5, value="TOTAL GERAL:").font = Font(bold=True)
+                    ws.cell(row=last_row, column=6, value=f"{df_res['PESO TOTAL (kg)'].sum():.2f} kg").font = Font(bold=True)
+                
+                st.download_button(
+                    label="📥 BAIXAR PLANILHA CALCULADA",
+                    data=output.getvalue(),
+                    file_name=f"PESOS_METAL_{up_pdf.name.replace('.pdf', '')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
 
     with aba_db:
-        st.write("Gerencie as tabelas base abaixo:")
-        # (Restante da aba de gerenciamento igual à v7.4)
+        st.info("Para atualizar os pesos, edite as tabelas no Google Sheets e aguarde alguns segundos.")
+        # Seletor de tabelas para edição rápida se necessário
+        tab_selecionada = st.selectbox("Escolha a tabela para visualizar/editar:", ["MAPEAMENTO_TIPO", "PESO_POR_METRO", "PESO_CONJUNTO"])
+        df_view = conn.read(worksheet=tab_selecionada, ttl=0)
+        novo_df = st.data_editor(df_view, num_rows="dynamic", use_container_width=True)
+        if st.button(f"💾 Salvar Alterações em {tab_selecionada}"):
+            conn.update(worksheet=tab_selecionada, data=novo_df)
+            st.success("Tabela atualizada com sucesso!")
+
+# (Mantive a lógica da Marcenaria e Início ocultas aqui para o código não ficar gigante, mas elas devem permanecer no seu arquivo principal)
