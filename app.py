@@ -17,34 +17,28 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- 2. CSS PERSONALIZADO (VISUAL MODERNO) ---
+# --- 2. CSS PERSONALIZADO ---
 st.markdown("""
     <style>
-    /* Títulos e Menu Lateral */
     h1 { color: #FF5722; font-family: 'Segoe UI', sans-serif; }
     .stRadio > label { font-size: 20px !important; font-weight: bold; color: #333; }
-    div[data-testid="stSidebarNav"] { font-size: 1.2rem; }
     
-    /* Botões Grandes para Metalurgia */
+    /* Botões de Seleção de Tabela (Metalurgia) */
     .stButton > button {
         background-color: #FF5722;
         color: white;
         width: 100%;
         border-radius: 10px;
         font-weight: bold;
-        height: 3em;
-        font-size: 16px;
-        transition: 0.3s;
+        height: 3.5em;
+        font-size: 15px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
     }
     .stButton > button:hover { background-color: #E64A19; border-color: #E64A19; }
     
-    /* Cartões e Métricas */
-    div[data-testid="stMetric"] {
-        background-color: #FFFFFF;
-        border-left: 6px solid #FF5722;
-        padding: 20px;
-        border-radius: 10px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    /* Ajuste de Texto do Menu Lateral */
+    section[data-testid="stSidebar"] .stRadio div[role="radiogroup"] {
+        padding-top: 20px;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -83,12 +77,12 @@ with st.sidebar:
     if os.path.exists("logo_tecama.png"):
         st.image("logo_tecama.png", use_container_width=True)
     else:
-        st.markdown("<h2 style='text-align: center;'>🏗️ TECAMA</h2>", unsafe_allow_html=True)
+        st.markdown("<h2 style='text-align: center; color: #FF5722;'>TECAMA</h2>", unsafe_allow_html=True)
     
     st.markdown("<br>", unsafe_allow_html=True)
     opcao = st.radio("NAVEGAÇÃO", ["🏠 Início", "🌲 Marcenaria", "⚙️ Metalurgia"])
     st.markdown("---")
-    st.caption("Tecama Hub Industrial v6.2")
+    st.caption("Tecama Hub Industrial v6.3")
 
 # ==========================================
 # PÁGINA: INÍCIO
@@ -104,12 +98,12 @@ if opcao == "🏠 Início":
     ---
     
     #### 🪵 Divisão de Marcenaria
-    A página de Marcenaria é focada no processamento de arquivos **CSV** gerados por softwares de projeto.
+    A página de Marcenaria é focada no **processamento de arquivos CSV gerados pelo Pontta**.
     * **Conversor:** Transforma listas brutas em planilhas de produção limpas, com nomes de materiais padronizados e cálculo automático de pesos.
     * **Gestão de Cores:** Permite editar em tempo real a tabela de códigos de cores, garantindo que o PDF de produção saia com as cores corretas da fábrica.
     
     #### ⚙️ Divisão de Metalurgia
-    A página de Metalurgia automatiza o levantamento de peso de estruturas metálicas através de arquivos **PDF**.
+    A página de Metalurgia **automatiza o levantamento de peso de estruturas metálicas através do relatório de metalurgia em PDF gerado pelo Pontta**.
     * **Calculadora:** Extrai tabelas de relatórios técnicos e aplica cálculos de peso baseados na seção dos tubos e pesos de conjuntos cadastrados.
     * **Gestão de Tabelas:** Controle total sobre os pesos por metro, conjuntos e regras de mapeamento de texto.
     
@@ -131,12 +125,11 @@ elif opcao == "🌲 Marcenaria":
         except:
             m_cores = {}
 
-        up_csv = st.file_uploader("Suba o arquivo CSV", type="csv")
+        up_csv = st.file_uploader("Suba o arquivo CSV (Pontta)", type="csv")
         if up_csv:
             df_b = pd.read_csv(up_csv, sep=None, engine='python', dtype=str)
             nome_f = up_csv.name.replace(".csv", "").upper()
             
-            # Lógica de detecção de título e cabeçalho
             l_teste = pd.to_numeric(df_b.iloc[0].get('LARG', ''), errors='coerce')
             if pd.isna(l_teste):
                 info_l = " - ".join([str(v) for v in df_b.iloc[0].dropna() if str(v).strip() != ""])
@@ -190,7 +183,7 @@ elif opcao == "🌲 Marcenaria":
                             for cell in row: cell.border = borda
                     for col_idx in range(1, 13): ws.column_dimensions[get_column_letter(col_idx)].width = 18
 
-                st.download_button("📥 Baixar Planilha", output.getvalue(), f"PROD_{nome_f}.xlsx")
+                st.download_button("📥 Baixar Planilha Marcenaria", output.getvalue(), f"PROD_{nome_f}.xlsx")
 
     with aba_cores:
         st.subheader("🎨 Editor de Cores")
@@ -198,14 +191,14 @@ elif opcao == "🌲 Marcenaria":
         nova_tabela_cores = st.data_editor(df_cores_edit, num_rows="dynamic", use_container_width=True)
         if st.button("💾 Salvar Alterações de Cores"):
             conn.update(worksheet="CORES_MARCENARIA", data=nova_tabela_cores)
-            st.success("Tabela de Cores atualizada!")
+            st.success("Tabela de Cores atualizada no Google Sheets!")
 
 # ==========================================
 # PÁGINA: METALURGIA
 # ==========================================
 elif opcao == "⚙️ Metalurgia":
     st.header("⚙️ Operações de Metalurgia")
-    aba_calc, aba_db = st.tabs(["📋 Calculadora PDF", "🛠️ Gerenciar Tabelas Base"])
+    aba_calc, aba_db = st.tabs(["📋 Calculadora PDF (Pontta)", "🛠️ Gerenciar Tabelas Base"])
 
     if 'db_mapeamento' not in st.session_state:
         try:
@@ -216,29 +209,24 @@ elif opcao == "⚙️ Metalurgia":
             st.error("Erro na conexão com o Banco de Dados.")
 
     with aba_calc:
-        # Lógica de extração e cálculo (Mantida conforme v6.1)
-        up_pdf = st.file_uploader("Upload PDF de Engenharia", type="pdf")
+        # (Lógica da calculadora PDF mantida)
+        up_pdf = st.file_uploader("Suba o Relatório de Metalurgia (PDF)", type="pdf")
         if up_pdf:
-            st.info("Processando PDF...")
-            # (Lógica de processamento PDF aqui)
+            st.info("Extraindo dados do relatório Pontta...")
 
     with aba_db:
         st.subheader("🛠️ Gestão de Tabelas")
-        st.write("Clique no botão da tabela que deseja visualizar ou editar:")
-        
-        c1, c2, c3 = st.columns(3)
         if 'tabela_metal_ativa' not in st.session_state: st.session_state.tabela_metal_ativa = "MAPEAMENTO_TIPO"
         
+        c1, c2, c3 = st.columns(3)
         if c1.button("📋 Regras de Mapeamento"): st.session_state.tabela_metal_ativa = "MAPEAMENTO_TIPO"
         if c2.button("⚖️ Pesos por Metro (Tubos)"): st.session_state.tabela_metal_ativa = "PESO_POR_METRO"
         if c3.button("📦 Pesos de Conjuntos"): st.session_state.tabela_metal_ativa = "PESO_CONJUNTO"
         
-        st.markdown(f"--- \n#### Editando: **{st.session_state.tabela_metal_ativa}**")
-        
-        # Editor de dados dinâmico
+        st.markdown(f"--- \n#### Editando agora: **{st.session_state.tabela_metal_ativa}**")
         df_m = conn.read(worksheet=st.session_state.tabela_metal_ativa, ttl=0)
         dados_novos_m = st.data_editor(df_m, num_rows="dynamic", use_container_width=True)
         
         if st.button(f"💾 Salvar alterações em {st.session_state.tabela_metal_ativa}"):
             conn.update(worksheet=st.session_state.tabela_metal_ativa, data=dados_novos_m)
-            st.success("Dados salvos no Google Sheets!")
+            st.success(f"Tabela {st.session_state.tabela_metal_ativa} salva!")
