@@ -12,7 +12,7 @@ from openpyxl.styles import Alignment, Border, Side, Font
 # --- 1. CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Tecama Hub Industrial", layout="wide", page_icon="🏗️")
 
-# --- 2. CSS PARA VISUAL v6.6 (FONTE GRANDE) ---
+# --- 2. CSS PARA VISUAL v6.6 (FONTE GRANDE E BOTÕES LARANJA) ---
 st.markdown("""
     <style>
     [data-testid="stSidebar"] .stRadio div[role="radiogroup"] label { font-size: 22px !important; font-weight: 600 !important; color: #333 !important; }
@@ -44,8 +44,8 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 
 # --- 3. FUNÇÕES AUXILIARES ---
 def norm(t):
+    """Limpa textos removendo acentos, quebras de linha e espaços extras do PDF"""
     if not t or pd.isna(t): return ""
-    # Remove acentos e limpa espaços duplos/quebras de linha do PDF
     t = unicodedata.normalize("NFD", str(t).upper()).encode("ascii", "ignore").decode("utf-8")
     return " ".join(t.split()).strip()
 
@@ -77,7 +77,7 @@ with st.sidebar:
     opcao = st.radio("NAVEGAÇÃO", ["🏠 Início", "🌲 Marcenaria", "⚙️ Metalurgia"], 
                      index=["🏠 Início", "🌲 Marcenaria", "⚙️ Metalurgia"].index(st.session_state.nav))
     st.session_state.nav = opcao
-    st.caption("Tecama Hub Industrial v7.6")
+    st.caption("Tecama Hub Industrial v7.7")
 
 # ==========================================
 # PÁGINA: INÍCIO (TEXTO v6.6)
@@ -140,7 +140,8 @@ elif st.session_state.nav == "🌲 Marcenaria":
                         ini = curr
                         for _, r in g.iterrows():
                             for i, c_nome in enumerate(col_ordem, 1):
-                                cell = ws.cell(row=curr, column=i, value=r.get(c_nome, ""))
+                                val = r.get(c_nome, "")
+                                cell = ws.cell(row=curr, column=i, value=val)
                                 if c_nome == "DES_PAI": cell.alignment = Alignment(wrap_text=True, vertical="center", horizontal="center")
                             soma += float(r.get("PESO_TOTAL", 0)); curr += 1
                         if len(g) > 1: ws.merge_cells(start_row=ini, end_row=curr-1, start_column=7, end_column=7)
@@ -155,12 +156,6 @@ elif st.session_state.nav == "🌲 Marcenaria":
                         letra = get_column_letter(i)
                         ws.column_dimensions[letra].width = 35 if letra == 'G' else 16
                 st.download_button("📥 Baixar Planilha Marcenaria", output.getvalue(), f"PROD_{nome_f}.xlsx")
-    with aba_cores:
-        df_cores_edit = conn.read(worksheet="CORES_MARCENARIA", ttl=0)
-        nova_tabela_cores = st.data_editor(df_cores_edit, num_rows="dynamic", use_container_width=True)
-        if st.button("💾 Salvar Cores"):
-            conn.update(worksheet="CORES_MARCENARIA", data=nova_tabela_cores)
-            st.success("Salvo!")
 
 # ==========================================
 # PÁGINA: METALURGIA
@@ -172,6 +167,7 @@ elif st.session_state.nav == "⚙️ Metalurgia":
         st.session_state.db_mapeamento = conn.read(worksheet="MAPEAMENTO_TIPO", ttl=5)
         st.session_state.db_pesos_metro = conn.read(worksheet="PESO_POR_METRO", ttl=5)
         st.session_state.db_pesos_conjunto = conn.read(worksheet="PESO_CONJUNTO", ttl=5)
+    
     with aba_calc:
         def calcular_metal(df_input):
             map_rules = st.session_state.db_mapeamento.to_dict('records')
@@ -179,27 +175,42 @@ elif st.session_state.nav == "⚙️ Metalurgia":
             dict_conjunto = dict(zip(st.session_state.db_pesos_conjunto['nome_conjunto'].apply(norm), st.session_state.db_pesos_conjunto['peso_unit_kg']))
             res = []
             for _, r in df_input.iterrows():
-                # Normalização que ignora quebras de linha e espaços extras do PDF
-                desc_bruta = str(r['DESCRIÇÃO'])
+                desc_bruta = str(r.get('DESCRIÇÃO', ''))
                 desc_limpa = norm(desc_bruta)
-                qtd = float(r['QTD']) if r['QTD'] else 0.0
+                qtd = float(r.get('QTD', 0)) if r.get('QTD') else 0.0
                 tipo = "DESCONHECIDO"
+                
+                # Busca Inteligente: ignora quebras de linha do PDF
                 for regra in map_rules:
-                    if norm(regra['texto_contido']) in desc_limpa:
-                        tipo = regra['tipo']; break
+                    regra_txt = norm(regra.get('texto_contido', ''))
+                    if regra_txt and regra_txt in desc_limpa:
+                        tipo = regra.get('tipo', 'DESCONHECIDO')
+                        break
+                
                 if tipo == "IGNORAR": continue
+                
                 medida = 0.0
-                try: medida = float(str(r['MEDIDA']).lower().replace('mm','').replace(',','.').strip())
-                except: pass
+                try:
+                    med_str = str(r.get('MEDIDA', '0')).lower().replace('mm','').replace(',','.').strip()
+                    medida = float(med_str) if med_str else 0.0
+                except: medida = 0.0
+                
                 p_unit = 0.0
                 if tipo == 'CONJUNTO':
                     for n_conj, p_val in dict_conjunto.items():
-                        if n_conj in desc_limpa: p_unit = p_val; break
-                elif 'tubo' in tipo.lower():
-                    sec = norm(tipo.lower().replace('tubo ', '').strip())
+                        if n_conj and n_conj in desc_limpa:
+                            p_unit = p_val
+                            break
+                elif tipo and 'tubo' in str(tipo).lower():
+                    sec = norm(str(tipo).lower().replace('tubo ', '').strip())
                     p_unit = (medida/1000) * dict_metro.get(sec, 0.0)
-                res.append({"QTD": qtd, "DESCRIÇÃO": desc_bruta, "MEDIDA": r['MEDIDA'], "TIPO": tipo, "PESO UNIT.": round(p_unit, 3), "PESO TOTAL": round(p_unit * qtd, 3)})
+                
+                res.append({
+                    "QTD": qtd, "DESCRIÇÃO": desc_bruta, "MEDIDA": r.get('MEDIDA', ''), 
+                    "TIPO": tipo, "PESO UNIT.": round(p_unit, 3), "PESO TOTAL": round(p_unit * qtd, 3)
+                })
             return pd.DataFrame(res)
+
         up_pdf = st.file_uploader("Suba o PDF Pontta", type="pdf")
         if up_pdf:
             itens = []
@@ -208,13 +219,15 @@ elif st.session_state.nav == "⚙️ Metalurgia":
                     tables = page.extract_tables()
                     for table in tables:
                         for r in table:
-                            if len(r) > 3 and str(r[0]).strip().replace('.','').isdigit():
+                            if r and len(r) > 3 and str(r[0]).strip().replace('.','').isdigit():
                                 itens.append({"QTD": r[0], "DESCRIÇÃO": r[1], "MEDIDA": r[3], "COR": r[2]})
+            
             df_edit = st.data_editor(pd.DataFrame(itens), num_rows="dynamic", use_container_width=True)
             if st.button("🚀 Calcular e Gerar Excel Detalhado"):
                 res_met = calcular_metal(df_edit)
                 st.metric("Peso Total Estimado", f"{res_met['PESO TOTAL'].sum():.2f} kg")
                 st.dataframe(res_met, use_container_width=True)
+                
                 output_met = io.BytesIO()
                 with pd.ExcelWriter(output_met, engine="openpyxl") as writer:
                     res_met.to_excel(writer, index=False, sheet_name="METALURGIA", startrow=1)
@@ -222,10 +235,11 @@ elif st.session_state.nav == "⚙️ Metalurgia":
                     last_row = len(res_met) + 3
                     ws_met.cell(row=last_row, column=5, value="TOTAL GERAL:").font = Font(bold=True)
                     ws_met.cell(row=last_row, column=6, value=f"{res_met['PESO TOTAL'].sum():.2f} kg").font = Font(bold=True)
-                    for i in range(1, 8):
+                    for i in range(1, 7):
                         letra = get_column_letter(i)
                         ws_met.column_dimensions[letra].width = 25
                 st.download_button("📥 Baixar Excel Metalurgia", output_met.getvalue(), f"METAL_{up_pdf.name}.xlsx")
+
     with aba_db:
         if 'tab_m' not in st.session_state: st.session_state.tab_m = "MAPEAMENTO_TIPO"
         c1, c2, c3 = st.columns(3)
@@ -233,7 +247,4 @@ elif st.session_state.nav == "⚙️ Metalurgia":
         if c2.button("⚖️ Tubos"): st.session_state.tab_m = "PESO_POR_METRO"
         if c3.button("📦 Conjuntos"): st.session_state.tab_m = "PESO_CONJUNTO"
         df_m = conn.read(worksheet=st.session_state.tab_m, ttl=0)
-        dados_novos = st.data_editor(df_m, num_rows="dynamic", use_container_width=True)
-        if st.button(f"💾 Salvar {st.session_state.tab_m}"):
-            conn.update(worksheet=st.session_state.tab_m, data=dados_novos)
-            st.success("Salvo!")
+        st.data_editor(df_m, num_rows="dynamic", use_container_width=True)
