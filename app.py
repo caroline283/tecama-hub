@@ -17,28 +17,39 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- 2. CSS PERSONALIZADO ---
+# --- 2. CSS PERSONALIZADO (VISUAL MODERNO E FONTE MAIOR) ---
 st.markdown("""
     <style>
-    h1 { color: #FF5722; font-family: 'Segoe UI', sans-serif; }
-    .stRadio > label { font-size: 20px !important; font-weight: bold; color: #333; }
+    /* Aumentar o texto da barra lateral */
+    [data-testid="stSidebar"] .stRadio div[role="radiogroup"] label {
+        font-size: 22px !important;
+        font-weight: 600 !important;
+        padding: 10px 0px !important;
+        color: #333 !important;
+    }
     
-    /* Botões de Seleção de Tabela (Metalurgia) */
+    /* Estilo dos títulos e textos */
+    h1 { color: #FF5722 !important; font-family: 'Segoe UI', sans-serif; }
+    h3 { color: #444 !important; }
+    
+    /* Botões Grandes e Independentes (Metalurgia) */
     .stButton > button {
         background-color: #FF5722;
         color: white;
         width: 100%;
-        border-radius: 10px;
+        border-radius: 12px;
         font-weight: bold;
-        height: 3.5em;
-        font-size: 15px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        height: 4em;
+        font-size: 16px;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        border: none;
     }
-    .stButton > button:hover { background-color: #E64A19; border-color: #E64A19; }
+    .stButton > button:hover { background-color: #E64A19; transform: translateY(-2px); }
     
-    /* Ajuste de Texto do Menu Lateral */
-    section[data-testid="stSidebar"] .stRadio div[role="radiogroup"] {
+    /* Ajuste do Logo na Sidebar */
+    [data-testid="stSidebar"] [data-testid="stImage"] {
         padding-top: 20px;
+        margin-bottom: -20px;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -80,9 +91,10 @@ with st.sidebar:
         st.markdown("<h2 style='text-align: center; color: #FF5722;'>TECAMA</h2>", unsafe_allow_html=True)
     
     st.markdown("<br>", unsafe_allow_html=True)
+    # Lista de navegação com texto maior via CSS
     opcao = st.radio("NAVEGAÇÃO", ["🏠 Início", "🌲 Marcenaria", "⚙️ Metalurgia"])
     st.markdown("---")
-    st.caption("Tecama Hub Industrial v6.3")
+    st.caption("Tecama Hub Industrial v6.4")
 
 # ==========================================
 # PÁGINA: INÍCIO
@@ -90,26 +102,29 @@ with st.sidebar:
 if opcao == "🏠 Início":
     st.title("Tecama Hub Industrial")
     
+    st.markdown("### Bem-vindo ao Sistema Unificado de Produção")
+    st.write("Esta plataforma foi desenvolvida para centralizar as operações das divisões de **Marcenaria** e **Metalurgia**, garantindo agilidade no processamento de pedidos e precisão nos cálculos de engenharia.")
+    
+    st.markdown("---")
+    
+    # Seção Marcenaria
+    st.subheader("🌲 Divisão de Marcenaria")
     st.markdown("""
-    ### Bem-vindo ao Sistema Unificado de Produção
-    
-    Esta plataforma foi desenvolvida para centralizar as operações das divisões de **Marcenaria** e **Metalurgia**, garantindo agilidade no processamento de pedidos e precisão nos cálculos de engenharia.
-    
-    ---
-    
-    #### 🪵 Divisão de Marcenaria
     A página de Marcenaria é focada no **processamento de arquivos CSV gerados pelo Pontta**.
     * **Conversor:** Transforma listas brutas em planilhas de produção limpas, com nomes de materiais padronizados e cálculo automático de pesos.
     * **Gestão de Cores:** Permite editar em tempo real a tabela de códigos de cores, garantindo que o PDF de produção saia com as cores corretas da fábrica.
+    """)
     
-    #### ⚙️ Divisão de Metalurgia
+    # Seção Metalurgia
+    st.subheader("⚙️ Divisão de Metalurgia")
+    st.markdown("""
     A página de Metalurgia **automatiza o levantamento de peso de estruturas metálicas através do relatório de metalurgia em PDF gerado pelo Pontta**.
     * **Calculadora:** Extrai tabelas de relatórios técnicos e aplica cálculos de peso baseados na seção dos tubos e pesos de conjuntos cadastrados.
     * **Gestão de Tabelas:** Controle total sobre os pesos por metro, conjuntos e regras de mapeamento de texto.
-    
-    ---
-    *Selecione uma divisão no menu lateral para começar.*
     """)
+    
+    st.markdown("---")
+    st.info("Selecione uma divisão no menu lateral para começar.")
 
 # ==========================================
 # PÁGINA: MARCENARIA
@@ -162,12 +177,16 @@ elif opcao == "🌲 Marcenaria":
                         cell.font = Font(bold=True); cell.alignment = Alignment(horizontal="center")
                     
                     curr = 4; soma = 0.0
-                    col_ordem = ["QUANT","COMP","LARG","MATERIAL","COR","DESCPECA","DES_PAI","CORTE","FITA","USINAGEM","PESO_UNIT","PESO_TOTAL"]
+                    col_ordem = ["QUANT","COMP","LARG","MATERIAL","COR","DESCPECA","DES_PAI","CORTE","FITA","USINAGEM","PES_UNIT","PESO_TOTAL"]
+                    # Correção: O código deve usar os nomes exatos das colunas calculadas
+                    col_map = {"PES_UNIT": "PESO_UNIT", "PESO_TOTAL": "PESO_TOTAL"}
+                    
                     for dp, g in df.groupby("DES_PAI", sort=False):
                         ini = curr
                         for _, r in g.iterrows():
                             for i, c_nome in enumerate(col_ordem, 1):
-                                ws.cell(row=curr, column=i, value=r.get(c_nome, ""))
+                                val = r.get(col_map.get(c_nome, c_nome), "")
+                                ws.cell(row=curr, column=i, value=val)
                             soma += float(r.get("PESO_TOTAL", 0)); curr += 1
                         if len(g) > 1:
                             ws.merge_cells(start_row=ini, end_row=curr-1, start_column=7, end_column=7)
@@ -209,24 +228,24 @@ elif opcao == "⚙️ Metalurgia":
             st.error("Erro na conexão com o Banco de Dados.")
 
     with aba_calc:
-        # (Lógica da calculadora PDF mantida)
         up_pdf = st.file_uploader("Suba o Relatório de Metalurgia (PDF)", type="pdf")
         if up_pdf:
             st.info("Extraindo dados do relatório Pontta...")
+            # Lógica de cálculo PDF aqui...
 
     with aba_db:
         st.subheader("🛠️ Gestão de Tabelas")
-        if 'tabela_metal_ativa' not in st.session_state: st.session_state.tabela_metal_ativa = "MAPEAMENTO_TIPO"
+        if 'tab_met' not in st.session_state: st.session_state.tab_met = "MAPEAMENTO_TIPO"
         
         c1, c2, c3 = st.columns(3)
-        if c1.button("📋 Regras de Mapeamento"): st.session_state.tabela_metal_ativa = "MAPEAMENTO_TIPO"
-        if c2.button("⚖️ Pesos por Metro (Tubos)"): st.session_state.tabela_metal_ativa = "PESO_POR_METRO"
-        if c3.button("📦 Pesos de Conjuntos"): st.session_state.tabela_metal_ativa = "PESO_CONJUNTO"
+        if c1.button("📋 Mapeamento de Peças"): st.session_state.tab_met = "MAPEAMENTO_TIPO"
+        if c2.button("⚖️ Pesos de Tubos (m)"): st.session_state.tab_met = "PESO_POR_METRO"
+        if c3.button("📦 Pesos de Conjuntos"): st.session_state.tab_met = "PESO_CONJUNTO"
         
-        st.markdown(f"--- \n#### Editando agora: **{st.session_state.tabela_metal_ativa}**")
-        df_m = conn.read(worksheet=st.session_state.tabela_metal_ativa, ttl=0)
+        st.markdown(f"#### Editando: **{st.session_state.tab_met}**")
+        df_m = conn.read(worksheet=st.session_state.tab_met, ttl=0)
         dados_novos_m = st.data_editor(df_m, num_rows="dynamic", use_container_width=True)
         
-        if st.button(f"💾 Salvar alterações em {st.session_state.tabela_metal_ativa}"):
-            conn.update(worksheet=st.session_state.tabela_metal_ativa, data=dados_novos_m)
-            st.success(f"Tabela {st.session_state.tabela_metal_ativa} salva!")
+        if st.button(f"💾 Salvar alterações em {st.session_state.tab_met}"):
+            conn.update(worksheet=st.session_state.tab_met, data=dados_novos_m)
+            st.success(f"Tabela {st.session_state.tab_met} salva!")
