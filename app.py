@@ -61,7 +61,7 @@ with st.sidebar:
     opcao = st.radio("NAVEGAÇÃO", ["🏠 Início", "🌲 Marcenaria", "⚙️ Metalurgia"], 
                      index=["🏠 Início", "🌲 Marcenaria", "⚙️ Metalurgia"].index(st.session_state.nav))
     st.session_state.nav = opcao
-    st.caption("Tecama Hub Industrial v9.7")
+    st.caption("Tecama Hub Industrial v9.8")
 
 # ==========================================
 # PÁGINA: INÍCIO (v6.6 INTEGRAL)
@@ -99,7 +99,6 @@ elif st.session_state.nav == "🌲 Marcenaria":
     aba_conv, aba_cores = st.tabs(["📋 Processadores de Arquivos", "🎨 Editar Cores"])
     
     with aba_conv:
-        # FASE 1: PRODUÇÃO
         st.subheader("1️⃣ Fase 1: Gerar Excel de Produção")
         try:
             df_cores_gs = conn.read(worksheet="CORES_MARCENARIA", ttl=5)
@@ -110,7 +109,6 @@ elif st.session_state.nav == "🌲 Marcenaria":
         if up_csv_f1:
             df_b = pd.read_csv(up_csv_f1, sep=None, engine='python', dtype=str)
             nome_f = up_csv_f1.name.replace(".csv", "").upper()
-            # Identificação de cabeçalho dinâmico para evitar KeyError
             l_teste = pd.to_numeric(df_b.iloc[0].get('LARG', ''), errors='coerce')
             df_p = df_b.iloc[1:].copy() if pd.isna(l_teste) else df_b.copy()
 
@@ -146,7 +144,6 @@ elif st.session_state.nav == "🌲 Marcenaria":
                 st.download_button("📥 Baixar Excel de Produção", output.getvalue(), f"PRODUCAO_{nome_f}.xlsx")
 
         st.markdown("---")
-        # FASE 2: CORTE CERTO (CORREÇÃO DE DECIMAIS E SYLK)
         st.subheader("2️⃣ Fase 2: Gerar CSV para Corte Certo")
         up_excel_f2 = st.file_uploader("Suba o Excel que você editou", type="xlsx", key="f2")
         if up_excel_f2:
@@ -156,28 +153,27 @@ elif st.session_state.nav == "🌲 Marcenaria":
                     df_e = df_e.dropna(subset=['QUANT', 'COMP', 'LARG'], how='all')
                     col_cc = ["QUANT", "COMP", "LARG", "COR (COD)", "DESCPECA"]
                     df_cc = df_e[col_cc].copy()
-                    
-                    # Converte números para inteiros limpos (remove .0)
                     for c in ["QUANT", "COMP", "LARG"]:
                         df_cc[c] = pd.to_numeric(df_cc[c], errors='coerce').fillna(0).astype(int)
-                    
-                    # Limpa a coluna de Cor se for numérica
                     df_cc["COR (COD)"] = df_cc["COR (COD)"].apply(lambda x: str(int(float(x))) if str(x).replace('.','').isdigit() else str(x))
-                    
-                    # Insere numeração iniciando com "ITEM" para evitar erro SYLK do Excel
                     df_cc.insert(0, "ITEM", range(1, len(df_cc) + 1))
-                    
-                    # Gera CSV sem cabeçalhos e com codificação correta
                     csv_out = df_cc.to_csv(index=False, sep=";", encoding="utf-8-sig", header=False)
                     st.download_button("📥 Baixar CSV Corte Certo", csv_out, f"CORTE_CERTO_{up_excel_f2.name.replace('.xlsx', '.csv')}", "text/csv")
                 except Exception as e: st.error(f"Erro no processamento: {e}")
 
+    with aba_cores:
+        df_c = conn.read(worksheet="CORES_MARCENARIA", ttl=0)
+        novo_c = st.data_editor(df_c, num_rows="dynamic", use_container_width=True)
+        if st.button("💾 Salvar Cores"):
+            conn.update(worksheet="CORES_MARCENARIA", data=novo_c); st.success("Salvo!")
+
 # ==========================================
-# PÁGINA: METALURGIA (CONSOLIDADA)
+# PÁGINA: METALURGIA (RESTAURADA)
 # ==========================================
 elif st.session_state.nav == "⚙️ Metalurgia":
     st.header("⚙️ Metalurgia")
     aba_calc, aba_db = st.tabs(["📋 Calculadora PDF", "🛠️ Gerenciar Tabelas Base"])
+    
     try:
         db_map = conn.read(worksheet="MAPEAMENTO_TIPO", ttl=5)
         db_metro = conn.read(worksheet="PESO_POR_METRO", ttl=5)
@@ -219,10 +215,21 @@ elif st.session_state.nav == "⚙️ Metalurgia":
                     res.append({"QTD": qtd, "DESCRIÇÃO": r.get('DESCRIÇÃO'), "MEDIDA": r.get('MEDIDA'), "TIPO": tipo, "PESO UNIT.": round(p_u, 3), "PESO TOTAL": round(p_u * qtd, 3)})
                 df_res = pd.DataFrame(res)
                 st.metric("Total", f"{df_res['PESO TOTAL'].sum():.2f} kg")
-                st.dataframe(df_res)
+                st.dataframe(df_res, use_container_width=True)
                 output_m = io.BytesIO()
                 with pd.ExcelWriter(output_m, engine="openpyxl") as writer:
                     df_res.to_excel(writer, index=False, sheet_name="METALURGIA", startrow=1)
                     ws = writer.sheets["METALURGIA"]
                     for i in range(1, 7): ws.column_dimensions[get_column_letter(i)].width = 25
                 st.download_button("📥 Baixar Excel Metalurgia", output_m.getvalue(), f"METAL_{up_pdf.name}.xlsx")
+
+    with aba_db:
+        if 't_m_ativa' not in st.session_state: st.session_state.t_m_ativa = "MAPEAMENTO_TIPO"
+        c1, c2, c3 = st.columns(3)
+        if c1.button("📋 Mapeamento"): st.session_state.t_m_ativa = "MAPEAMENTO_TIPO"
+        if c2.button("⚖️ Tubos"): st.session_state.t_m_ativa = "PESO_POR_METRO"
+        if c3.button("📦 Conjuntos"): st.session_state.t_m_ativa = "PESO_CONJUNTO"
+        df_v = conn.read(worksheet=st.session_state.t_m_ativa, ttl=0)
+        novo_v = st.data_editor(df_v, num_rows="dynamic", use_container_width=True)
+        if st.button("💾 Salvar"):
+            conn.update(worksheet=st.session_state.t_m_ativa, data=novo_v); st.success("Salvo!")
