@@ -9,17 +9,19 @@ from streamlit_gsheets import GSheetsConnection
 from openpyxl.utils import get_column_letter
 from openpyxl.styles import Alignment, Border, Side, Font
 
-# --- 1. CONFIGURAÇÃO ---
+# --- 1. CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Tecama Hub Industrial", layout="wide", page_icon="🏗️")
 
-# --- 2. CSS VISUAL v6.6 TRAVADO ---
+# --- 2. CSS PERSONALIZADO (VISUAL v6.6 INTEGRAL) ---
 st.markdown("""
     <style>
     [data-testid="stSidebar"] .stRadio div[role="radiogroup"] label { font-size: 22px !important; font-weight: 600 !important; color: #333 !important; }
     h1 { color: #FF5722 !important; font-family: 'Segoe UI', sans-serif; }
+    h3 { color: #444 !important; }
     .stButton > button {
         background-color: #FF5722; color: white; width: 100%; border-radius: 12px;
         font-weight: bold; height: 3.5em; font-size: 16px; border: none;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
     }
     .home-link .stButton > button {
         background-color: transparent !important; color: #FF5722 !important; border: none !important;
@@ -31,18 +33,17 @@ st.markdown("""
 
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# --- 3. FUNÇÕES DE LIMPEZA ---
+# --- 3. FUNÇÕES AUXILIARES ---
 def norm(t):
     if t is None or pd.isna(t): return ""
     t = unicodedata.normalize("NFD", str(t).upper()).encode("ascii", "ignore").decode("utf-8")
     return " ".join(t.split()).strip()
 
-def limpar_material_apenas_cor(t):
-    """Remove 'CHAPA', 'MDF', 'MDP' e espessuras tipo '18MM'"""
+def limpar_apenas_cor(t):
     t = norm(t)
-    t = re.sub(r'\d+\s*MM', '', t) # Remove 15MM, 18 MM, etc
-    for termo in ["CHAPA DE", "CHAPA", "MDF", "MDP", "HDF", "DURATEX", "ARACO"]:
-        t = t.replace(termo, "")
+    t = re.sub(r'\d+\s*MM', '', t) 
+    for r in ["CHAPA DE", "CHAPA", "MDF", "MDP", "HDF", "MM", "DURATEX", "ARACO"]:
+        t = t.replace(r, "")
     return t.strip()
 
 def calcular_pesos_madeira(larg, comp, quant, material_texto):
@@ -58,13 +59,15 @@ def calcular_pesos_madeira(larg, comp, quant, material_texto):
 
 # --- 4. NAVEGAÇÃO ---
 if 'nav' not in st.session_state: st.session_state.nav = "🏠 Início"
+
 with st.sidebar:
     if os.path.exists("logo_tecama.png"): st.image("logo_tecama.png", use_container_width=True)
-    st.session_state.nav = st.radio("NAVEGAÇÃO", ["🏠 Início", "🌲 Marcenaria", "⚙️ Metalurgia"], 
-                                   index=["🏠 Início", "🌲 Marcenaria", "⚙️ Metalurgia"].index(st.session_state.nav))
+    opcao = st.radio("NAVEGAÇÃO", ["🏠 Início", "🌲 Marcenaria", "⚙️ Metalurgia"], 
+                     index=["🏠 Início", "🌲 Marcenaria", "⚙️ Metalurgia"].index(st.session_state.nav))
+    st.session_state.nav = opcao
 
 # ==========================================
-# PÁGINA: INÍCIO (v6.6)
+# PÁGINA: INÍCIO (v6.6 TOTALMENTE TRAVADA)
 # ==========================================
 if st.session_state.nav == "🏠 Início":
     st.title("Tecama Hub Industrial")
@@ -86,28 +89,28 @@ if st.session_state.nav == "🏠 Início":
 # ==========================================
 elif st.session_state.nav == "🌲 Marcenaria":
     st.header("🌲 Marcenaria")
-    f1, f2 = st.tabs(["📋 Fase 1: Produção", "🚀 Fase 2: Corte Certo"])
+    aba_f1, aba_f2, aba_cores = st.tabs(["📋 Fase 1: Produção", "🚀 Fase 2: Corte Certo", "🎨 Cores"])
     
-    with f1:
-        up_csv = st.file_uploader("CSV Pontta", type="csv", key="f1")
+    with aba_f1:
+        up_csv = st.file_uploader("Suba o CSV original do Pontta", type="csv", key="f1_csv")
         if up_csv:
             df_b = pd.read_csv(up_csv, sep=None, engine='python', dtype=str)
             df_b.columns = [norm(c) for c in df_b.columns]
             if st.button("🚀 Gerar Excel para Fábrica"):
-                df_b["MATERIAL"] = df_b["MATERIAL"].apply(limpar_material_apenas_cor)
+                # Ajuste 1: Limpeza do material (Apenas a cor)
+                df_b["MATERIAL"] = df_b["MATERIAL"].apply(limpar_apenas_cor)
                 pesos = df_b.apply(lambda r: calcular_pesos_madeira(r.get("LARG",0), r.get("COMP",0), r.get("QUANT",0), r.get("MATERIAL","")), axis=1)
                 df_b["PESO_UNIT"] = pesos.apply(lambda x: x[0]); df_b["PESO_TOTAL"] = pesos.apply(lambda x: x[1])
                 
-                out = io.BytesIO()
-                with pd.ExcelWriter(out, engine="openpyxl") as writer:
+                output = io.BytesIO()
+                with pd.ExcelWriter(output, engine="openpyxl") as writer:
                     ws = writer.book.create_sheet("PRODUCAO")
                     ws.cell(row=1, column=1, value="TECAMA | PRODUÇÃO").font = Font(bold=True, size=14)
-                    header = ["QUANT","COMP","LARG","MATERIAL (COR)","COR (COD)","DESCPECA","PRODUTO","CORTE","FITA","USINAGEM","PESO UNIT.","PESO TOTAL"]
+                    header = ["QUANT","COMP","LARG","COR","COD","DESCPECA","PRODUTO","CORTE","FITA","USINAGEM","PESO UNIT.","PESO TOTAL"]
                     for i, h in enumerate(header, 1):
                         cell = ws.cell(row=3, column=i, value=h); cell.font = Font(bold=True); cell.alignment = Alignment(horizontal="center")
                     
                     curr = 4
-                    # Ordenar por Produto para agrupar na mesclagem
                     df_b = df_b.sort_values(by="DES_PAI")
                     for prod, g in df_b.groupby("DES_PAI", sort=False):
                         ini = curr
@@ -116,36 +119,35 @@ elif st.session_state.nav == "🌲 Marcenaria":
                             for i, v in enumerate(vals, 1):
                                 c = ws.cell(row=curr, column=i, value=v)
                                 c.border = Border(left=Side(style="thin"), right=Side(style="thin"), top=Side(style="thin"), bottom=Side(style="thin"))
-                                if i == 7: # Coluna Produto
-                                    c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-                                else:
-                                    c.alignment = Alignment(horizontal="center", vertical="center")
+                                # Ajuste 2: Mesclagem e Quebra de Texto no Produto
+                                if i == 7: c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+                                else: c.alignment = Alignment(horizontal="center", vertical="center")
                             curr += 1
-                        # Mesclagem da coluna Produto (7)
-                        if len(g) > 1:
-                            ws.merge_cells(start_row=ini, end_row=curr-1, start_column=7, end_column=7)
-                        curr += 1 # Linha de respiro
+                        if len(g) > 1: ws.merge_cells(start_row=ini, end_row=curr-1, start_column=7, end_column=7)
+                        curr += 1 
                     
-                    ws.column_dimensions['G'].width = 30 # Largura média para Produto
-                    for i in [1,2,3,4,5,6,8,9,10,11,12]: ws.column_dimensions[get_column_letter(i)].width = 15
-                
-                st.download_button("📥 Baixar Excel", out.getvalue(), "PRODUCAO_TECAMA.xlsx")
+                    ws.column_dimensions['G'].width = 30 # Largura média
+                    for i in range(1, 13): 
+                        if i != 7: ws.column_dimensions[get_column_letter(i)].width = 15
+                st.download_button("📥 Baixar Excel", output.getvalue(), "PRODUCAO_TECAMA.xlsx")
 
-    with f2:
-        up_ex = st.file_uploader("Excel Editado", type="xlsx", key="f2")
+    with aba_f2:
+        up_ex = st.file_uploader("Suba o Excel que você editou", type="xlsx", key="f2_ex")
         if up_ex:
             if st.button("🚀 Gerar CSV para Corte Certo"):
+                # Ajuste 3: CSV sem cabeçalho e números inteiros
                 df_e = pd.read_excel(up_ex, skiprows=2).dropna(subset=['QUANT', 'COMP', 'LARG'], how='all')
                 res = pd.DataFrame()
                 res["ITEM"] = range(1, len(df_e) + 1)
-                for c in ["QUANT", "COMP", "LARG"]: res[c] = pd.to_numeric(df_e[c], errors='coerce').fillna(0).astype(int)
-                res["COR"] = df_e["COR (COD)"].apply(lambda x: str(int(float(x))) if str(x).replace('.','').isdigit() else str(x))
+                for c in ["QUANT", "COMP", "LARG"]: 
+                    res[c] = pd.to_numeric(df_e[c], errors='coerce').fillna(0).astype(int)
+                res["COR"] = df_e["COD"].apply(lambda x: str(int(float(x))) if str(x).replace('.','').isdigit() else str(x))
                 res["DESC"] = df_e["DESCPECA"]
                 csv_out = res.to_csv(index=False, sep=";", header=False, encoding="utf-8-sig")
                 st.download_button("📥 Baixar CSV Corte Certo", csv_out, "CORTE_CERTO.csv")
 
 # ==========================================
-# PÁGINA: METALURGIA (RESTABELECIDA)
+# PÁGINA: METALURGIA (TRAVADA v6.6)
 # ==========================================
 elif st.session_state.nav == "⚙️ Metalurgia":
     st.header("⚙️ Metalurgia")
@@ -156,7 +158,7 @@ elif st.session_state.nav == "⚙️ Metalurgia":
         db_conj = conn.read(worksheet="PESO_CONJUNTO", ttl=5)
         dict_m = dict(zip(db_metro['secao'].apply(norm), db_metro['peso_kg_m']))
         list_m = db_map.to_dict('records'); list_c = db_conj.to_dict('records')
-    except: st.error("Erro nas tabelas.")
+    except: st.error("Erro ao carregar tabelas.")
 
     with aba1:
         up_pdf = st.file_uploader("Suba o PDF", type="pdf")
@@ -170,5 +172,24 @@ elif st.session_state.nav == "⚙️ Metalurgia":
                                 itens.append({"QTD": r[0], "DESCRIÇÃO": r[1], "MEDIDA": r[3], "COR": r[2]})
             df_ed = st.data_editor(pd.DataFrame(itens), use_container_width=True)
             if st.button("🚀 Calcular"):
-                # Lógica de cálculo v9.8 mantida
-                st.success("Calculado!")
+                res = []
+                for _, r in df_ed.iterrows():
+                    desc_l = norm(str(r.get('DESCRIÇÃO')))
+                    qtd = float(str(r.get('QTD', 0)).replace(',','.'))
+                    tipo = "DESCONHECIDO"
+                    for regra in list_m:
+                        if norm(regra.get('texto_contido')) in desc_l:
+                            tipo = str(regra.get('tipo', 'DESCONHECIDO')).upper(); break
+                    if tipo == "IGNORAR": continue
+                    p_u = 0.0
+                    if tipo == "CONJUNTO":
+                        for c in list_c:
+                            if norm(c.get('nome_conjunto')) in desc_l: p_u = float(c.get('peso_unit_kg', 0)); break
+                    elif "TUBO" in tipo or tipo in dict_m:
+                        med = float(str(r.get('MEDIDA', '0')).lower().replace('mm','').replace(',','.').strip())
+                        sec = norm(tipo.replace('TUBO ', '').strip())
+                        p_u = (med / 1000) * dict_m.get(sec, 0.0)
+                    res.append({"QTD": qtd, "DESCRIÇÃO": r.get('DESCRIÇÃO'), "MEDIDA": r.get('MEDIDA'), "TIPO": tipo, "PESO UNIT.": round(p_u, 3), "PESO TOTAL": round(p_u * qtd, 3)})
+                df_res = pd.DataFrame(res)
+                st.metric("Total", f"{df_res['PESO TOTAL'].sum():.2f} kg")
+                st.dataframe(df_res)
